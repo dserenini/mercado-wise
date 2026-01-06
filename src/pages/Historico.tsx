@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Switch } from "@/components/ui/switch";
 import { Loader2, Receipt, Store, Calendar, Tag, Plus, Trash2, Filter, Pencil, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -37,6 +38,7 @@ interface ManualItem {
   name: string;
   quantity: number;
   unitPrice: number;
+  isPromotion: boolean;
 }
 
 export default function Historico() {
@@ -65,7 +67,7 @@ export default function Historico() {
   // Manual purchase form state
   const [supermarketName, setSupermarketName] = useState("");
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split("T")[0]);
-  const [manualItems, setManualItems] = useState<ManualItem[]>([{ name: "", quantity: 1, unitPrice: 0 }]);
+  const [manualItems, setManualItems] = useState<ManualItem[]>([{ name: "", quantity: 1, unitPrice: 0, isPromotion: false }]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -154,7 +156,7 @@ export default function Historico() {
   };
 
   const addManualItem = () => {
-    setManualItems([...manualItems, { name: "", quantity: 1, unitPrice: 0 }]);
+    setManualItems([...manualItems, { name: "", quantity: 1, unitPrice: 0, isPromotion: false }]);
   };
 
   const removeManualItem = (index: number) => {
@@ -163,7 +165,7 @@ export default function Historico() {
     }
   };
 
-  const updateManualItem = (index: number, field: keyof ManualItem, value: string | number) => {
+  const updateManualItem = (index: number, field: keyof ManualItem, value: string | number | boolean) => {
     const updated = [...manualItems];
     updated[index] = { ...updated[index], [field]: value };
     setManualItems(updated);
@@ -172,7 +174,7 @@ export default function Historico() {
   const resetForm = () => {
     setSupermarketName("");
     setPurchaseDate(new Date().toISOString().split("T")[0]);
-    setManualItems([{ name: "", quantity: 1, unitPrice: 0 }]);
+    setManualItems([{ name: "", quantity: 1, unitPrice: 0, isPromotion: false }]);
     setEditingPurchase(null);
   };
 
@@ -198,8 +200,9 @@ export default function Historico() {
             name: item.product_name,
             quantity: item.quantity || 1,
             unitPrice: item.unit_price,
+            isPromotion: item.is_promotion || false,
           }))
-        : [{ name: "", quantity: 1, unitPrice: 0 }]
+        : [{ name: "", quantity: 1, unitPrice: 0, isPromotion: false }]
     );
     setSheetOpen(true);
   };
@@ -340,6 +343,7 @@ export default function Historico() {
         quantity: item.quantity,
         unit_price: item.unitPrice,
         total_price: item.quantity * item.unitPrice,
+        is_promotion: item.isPromotion,
       }));
 
       const { error: itemsError } = await supabase.from("purchase_items").insert(itemsToInsert);
@@ -388,6 +392,7 @@ export default function Historico() {
         quantity: item.quantity,
         unit_price: item.unitPrice,
         total_price: item.quantity * item.unitPrice,
+        is_promotion: item.isPromotion,
       }));
 
       const { error: itemsError } = await supabase.from("purchase_items").insert(itemsToInsert);
@@ -540,6 +545,16 @@ export default function Historico() {
                               onChange={(e) => updateManualItem(index, "unitPrice", Number(e.target.value))}
                             />
                           </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-2">
+                          <div className="flex items-center gap-2">
+                            <Tag className="h-4 w-4 text-primary" />
+                            <span className="text-sm">Promoção</span>
+                          </div>
+                          <Switch
+                            checked={item.isPromotion}
+                            onCheckedChange={(checked) => updateManualItem(index, "isPromotion", checked)}
+                          />
                         </div>
                       </div>
                     ))}
