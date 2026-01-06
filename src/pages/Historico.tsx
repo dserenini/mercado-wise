@@ -245,6 +245,39 @@ export default function Historico() {
   const handleSaveManualPurchase = async () => {
     if (!user) return;
 
+    // Validação: Nome do supermercado obrigatório
+    if (!supermarketName.trim()) {
+      toast({
+        title: "Nome do supermercado é obrigatório",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validação: Data de compra válida (entre 01/01/2025 e hoje)
+    const minDate = new Date("2025-01-01");
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const selectedDate = new Date(purchaseDate);
+    
+    if (selectedDate < minDate) {
+      toast({
+        title: "Data inválida",
+        description: "A data da compra deve ser a partir de 01/01/2025.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (selectedDate > today) {
+      toast({
+        title: "Data inválida",
+        description: "Não é permitido cadastrar compras com data no futuro.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const validItems = manualItems.filter((item) => item.name.trim() !== "");
     if (validItems.length === 0) {
       toast({
@@ -252,6 +285,26 @@ export default function Historico() {
         variant: "destructive",
       });
       return;
+    }
+
+    // Validação: Quantidade e preço dos itens
+    for (const item of validItems) {
+      if (item.quantity <= 0) {
+        toast({
+          title: "Quantidade inválida",
+          description: `O item "${item.name}" deve ter quantidade maior que zero.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (item.unitPrice <= 0) {
+        toast({
+          title: "Preço inválido",
+          description: `O item "${item.name}" deve ter preço unitário maior que zero.`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     setSaving(true);
@@ -439,17 +492,13 @@ export default function Historico() {
                       type="date"
                       value={purchaseDate}
                       onChange={(e) => setPurchaseDate(e.target.value)}
+                      min="2025-01-01"
+                      max={new Date().toISOString().split("T")[0]}
                     />
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Label>Itens</Label>
-                      <Button type="button" variant="outline" size="sm" onClick={addManualItem}>
-                        <Plus className="h-4 w-4 mr-1" />
-                        Item
-                      </Button>
-                    </div>
+                    <Label>Itens</Label>
                     {manualItems.map((item, index) => (
                       <div key={index} className="p-3 bg-muted/50 rounded-xl space-y-2">
                         <div className="flex items-center justify-between">
@@ -475,17 +524,18 @@ export default function Historico() {
                             <Label className="text-xs">Quantidade</Label>
                             <Input
                               type="number"
-                              min="1"
+                              min="0.01"
+                              step="0.01"
                               value={item.quantity}
                               onChange={(e) => updateManualItem(index, "quantity", Number(e.target.value))}
                             />
                           </div>
                           <div>
-                            <Label className="text-xs">Preço unitário</Label>
+                            <Label className="text-xs">Preço unitário (R$)</Label>
                             <Input
                               type="number"
                               step="0.01"
-                              min="0"
+                              min="0.01"
                               value={item.unitPrice}
                               onChange={(e) => updateManualItem(index, "unitPrice", Number(e.target.value))}
                             />
@@ -493,6 +543,10 @@ export default function Historico() {
                         </div>
                       </div>
                     ))}
+                    <Button type="button" variant="outline" size="sm" onClick={addManualItem} className="w-full">
+                      <Plus className="h-4 w-4 mr-1" />
+                      Adicionar Item
+                    </Button>
                   </div>
 
                   <div className="pt-4 border-t">
