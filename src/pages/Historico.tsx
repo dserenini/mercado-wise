@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,8 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Loader2, Receipt, Store, Calendar, Tag, Plus, Trash2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Loader2, Receipt, Store, Calendar, Tag, Plus, Trash2, Filter, Pencil, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
 interface PurchaseItem {
   id: string;
   product_name: string;
@@ -47,6 +50,18 @@ export default function Historico() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Filter state
+  const [filterSupermarket, setFilterSupermarket] = useState<string>("all");
+  const [filterDateFrom, setFilterDateFrom] = useState<string>("");
+  const [filterDateTo, setFilterDateTo] = useState<string>("");
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Edit state
+  const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [purchaseToDelete, setPurchaseToDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   // Manual purchase form state
   const [supermarketName, setSupermarketName] = useState("");
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split("T")[0]);
@@ -81,6 +96,41 @@ export default function Historico() {
     }
     setLoading(false);
   };
+
+  // Get unique supermarkets for filter
+  const uniqueSupermarkets = useMemo(() => {
+    const supermarkets = purchases
+      .map((p) => p.supermarket_name)
+      .filter((name): name is string => !!name);
+    return [...new Set(supermarkets)];
+  }, [purchases]);
+
+  // Filter purchases
+  const filteredPurchases = useMemo(() => {
+    return purchases.filter((purchase) => {
+      // Supermarket filter
+      if (filterSupermarket !== "all" && purchase.supermarket_name !== filterSupermarket) {
+        return false;
+      }
+      // Date from filter
+      if (filterDateFrom && purchase.purchase_date < filterDateFrom) {
+        return false;
+      }
+      // Date to filter
+      if (filterDateTo && purchase.purchase_date > filterDateTo) {
+        return false;
+      }
+      return true;
+    });
+  }, [purchases, filterSupermarket, filterDateFrom, filterDateTo]);
+
+  const clearFilters = () => {
+    setFilterSupermarket("all");
+    setFilterDateFrom("");
+    setFilterDateTo("");
+  };
+
+  const hasActiveFilters = filterSupermarket !== "all" || filterDateFrom || filterDateTo;
 
   const fetchItems = async (purchaseId: string) => {
     if (expandedId === purchaseId) {
@@ -123,6 +173,73 @@ export default function Historico() {
     setSupermarketName("");
     setPurchaseDate(new Date().toISOString().split("T")[0]);
     setManualItems([{ name: "", quantity: 1, unitPrice: 0 }]);
+    setEditingPurchase(null);
+  };
+
+  const handleEditPurchase = async (purchase: Purchase, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    // Fetch items if not already loaded
+    let items = purchase.items;
+    if (!items) {
+      const { data } = await supabase
+        .from("purchase_items")
+        .select("*")
+        .eq("purchase_id", purchase.id);
+      items = data || [];
+    }
+
+    setEditingPurchase(purchase);
+    setSupermarketName(purchase.supermarket_name || "");
+    setPurchaseDate(purchase.purchase_date);
+    setManualItems(
+      items.length > 0
+        ? items.map((item) => ({
+            name: item.product_name,
+            quantity: item.quantity || 1,
+            unitPrice: item.unit_price,
+          }))
+        : [{ name: "", quantity: 1, unitPrice: 0 }]
+    );
+    setSheetOpen(true);
+  };
+
+  const handleDeleteClick = (purchaseId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPurchaseToDelete(purchaseId);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!purchaseToDelete) return;
+
+    setDeleting(true);
+    
+    // Delete items first (due to foreign key)
+    await supabase.from("purchase_items").delete().eq("purchase_id", purchaseToDelete);
+    
+    const { error } = await supabase
+      .from("purchase_history")
+      .delete()
+      .eq("id", purchaseToDelete);
+
+    if (error) {
+      toast({
+        title: "Erro ao excluir compra",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Compra excluída",
+        description: "A compra foi removida com sucesso.",
+      });
+      fetchPurchases();
+    }
+
+    setDeleting(false);
+    setDeleteDialogOpen(false);
+    setPurchaseToDelete(null);
   };
 
   const handleSaveManualPurchase = async () => {
@@ -140,51 +257,103 @@ export default function Historico() {
     setSaving(true);
     const totalAmount = validItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 
-    const { data: purchaseData, error: purchaseError } = await supabase
-      .from("purchase_history")
-      .insert({
-        user_id: user.id,
-        supermarket_name: supermarketName || null,
-        purchase_date: purchaseDate,
-        total_amount: totalAmount,
-      })
-      .select()
-      .single();
+    if (editingPurchase) {
+      // Update existing purchase
+      const { error: updateError } = await supabase
+        .from("purchase_history")
+        .update({
+          supermarket_name: supermarketName || null,
+          purchase_date: purchaseDate,
+          total_amount: totalAmount,
+        })
+        .eq("id", editingPurchase.id);
 
-    if (purchaseError) {
-      toast({
-        title: "Erro ao salvar compra",
-        description: purchaseError.message,
-        variant: "destructive",
-      });
-      setSaving(false);
-      return;
-    }
+      if (updateError) {
+        toast({
+          title: "Erro ao atualizar compra",
+          description: updateError.message,
+          variant: "destructive",
+        });
+        setSaving(false);
+        return;
+      }
 
-    const itemsToInsert = validItems.map((item) => ({
-      purchase_id: purchaseData.id,
-      product_name: item.name,
-      quantity: item.quantity,
-      unit_price: item.unitPrice,
-      total_price: item.quantity * item.unitPrice,
-    }));
+      // Delete old items and insert new ones
+      await supabase.from("purchase_items").delete().eq("purchase_id", editingPurchase.id);
 
-    const { error: itemsError } = await supabase.from("purchase_items").insert(itemsToInsert);
+      const itemsToInsert = validItems.map((item) => ({
+        purchase_id: editingPurchase.id,
+        product_name: item.name,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        total_price: item.quantity * item.unitPrice,
+      }));
 
-    if (itemsError) {
-      toast({
-        title: "Erro ao salvar itens",
-        description: itemsError.message,
-        variant: "destructive",
-      });
+      const { error: itemsError } = await supabase.from("purchase_items").insert(itemsToInsert);
+
+      if (itemsError) {
+        toast({
+          title: "Erro ao atualizar itens",
+          description: itemsError.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Compra atualizada!",
+          description: `${validItems.length} itens salvos com sucesso.`,
+        });
+        resetForm();
+        setSheetOpen(false);
+        fetchPurchases();
+      }
     } else {
-      toast({
-        title: "Compra adicionada!",
-        description: `${validItems.length} itens salvos com sucesso.`,
-      });
-      resetForm();
-      setSheetOpen(false);
-      fetchPurchases();
+      // Create new purchase
+      const { data: purchaseData, error: purchaseError } = await supabase
+        .from("purchase_history")
+        .insert({
+          user_id: user.id,
+          supermarket_name: supermarketName || null,
+          purchase_date: purchaseDate,
+          total_amount: totalAmount,
+        })
+        .select()
+        .single();
+
+      if (purchaseError) {
+        toast({
+          title: "Erro ao salvar compra",
+          description: purchaseError.message,
+          variant: "destructive",
+        });
+        setSaving(false);
+        return;
+      }
+
+      const itemsToInsert = validItems.map((item) => ({
+        purchase_id: purchaseData.id,
+        product_name: item.name,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        total_price: item.quantity * item.unitPrice,
+      }));
+
+      const { error: itemsError } = await supabase.from("purchase_items").insert(itemsToInsert);
+
+      if (itemsError) {
+        toast({
+          title: "Erro ao salvar itens",
+          description: itemsError.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Compra adicionada!",
+          description: `${validItems.length} itens salvos com sucesso.`,
+        });
+        resetForm();
+        setSheetOpen(false);
+        fetchPurchases();
+      }
     }
     setSaving(false);
   };
@@ -221,137 +390,215 @@ export default function Historico() {
           <div>
             <h1 className="font-display font-bold text-2xl">Histórico</h1>
             <p className="text-muted-foreground text-sm">
-              {purchases.length} {purchases.length === 1 ? "compra" : "compras"} registradas
+              {filteredPurchases.length} {filteredPurchases.length === 1 ? "compra" : "compras"} 
+              {hasActiveFilters && " (filtrado)"}
             </p>
           </div>
-          <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-            <SheetTrigger asChild>
-              <Button size="sm" className="gap-2">
-                <Plus className="h-4 w-4" />
-                Adicionar
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="bottom" className="h-[85vh] overflow-y-auto">
-              <SheetHeader className="mb-4">
-                <SheetTitle>Nova Compra Manual</SheetTitle>
-              </SheetHeader>
-              <div className="space-y-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="supermarket">Supermercado</Label>
-                  <Input
-                    id="supermarket"
-                    placeholder="Nome do supermercado"
-                    value={supermarketName}
-                    onChange={(e) => setSupermarketName(e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="date">Data da compra</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={purchaseDate}
-                    onChange={(e) => setPurchaseDate(e.target.value)}
-                  />
-                </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={showFilters ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+              className="gap-2"
+            >
+              <Filter className="h-4 w-4" />
+              {hasActiveFilters && (
+                <Badge variant="secondary" className="h-5 w-5 p-0 flex items-center justify-center text-xs">
+                  !
+                </Badge>
+              )}
+            </Button>
+            <Sheet open={sheetOpen} onOpenChange={(open) => {
+              setSheetOpen(open);
+              if (!open) resetForm();
+            }}>
+              <SheetTrigger asChild>
+                <Button size="sm" className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Adicionar
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="bottom" className="h-[85vh] overflow-y-auto">
+                <SheetHeader className="mb-4">
+                  <SheetTitle>{editingPurchase ? "Editar Compra" : "Nova Compra Manual"}</SheetTitle>
+                </SheetHeader>
+                <div className="space-y-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="supermarket">Supermercado</Label>
+                    <Input
+                      id="supermarket"
+                      placeholder="Nome do supermercado"
+                      value={supermarketName}
+                      onChange={(e) => setSupermarketName(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="date">Data da compra</Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      value={purchaseDate}
+                      onChange={(e) => setPurchaseDate(e.target.value)}
+                    />
+                  </div>
 
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label>Itens</Label>
-                    <Button type="button" variant="outline" size="sm" onClick={addManualItem}>
-                      <Plus className="h-4 w-4 mr-1" />
-                      Item
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label>Itens</Label>
+                      <Button type="button" variant="outline" size="sm" onClick={addManualItem}>
+                        <Plus className="h-4 w-4 mr-1" />
+                        Item
+                      </Button>
+                    </div>
+                    {manualItems.map((item, index) => (
+                      <div key={index} className="p-3 bg-muted/50 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">Item {index + 1}</span>
+                          {manualItems.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeManualItem(index)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                        <Input
+                          placeholder="Nome do produto"
+                          value={item.name}
+                          onChange={(e) => updateManualItem(index, "name", e.target.value)}
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs">Quantidade</Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) => updateManualItem(index, "quantity", Number(e.target.value))}
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Preço unitário</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={item.unitPrice}
+                              onChange={(e) => updateManualItem(index, "unitPrice", Number(e.target.value))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="pt-4 border-t">
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="font-semibold">Total:</span>
+                      <span className="font-display font-bold text-xl text-primary">
+                        {formatCurrency(
+                          manualItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
+                        )}
+                      </span>
+                    </div>
+                    <Button
+                      className="w-full"
+                      onClick={handleSaveManualPurchase}
+                      disabled={saving}
+                    >
+                      {saving ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Salvando...
+                        </>
+                      ) : editingPurchase ? (
+                        "Atualizar Compra"
+                      ) : (
+                        "Salvar Compra"
+                      )}
                     </Button>
                   </div>
-                  {manualItems.map((item, index) => (
-                    <div key={index} className="p-3 bg-muted/50 rounded-xl space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Item {index + 1}</span>
-                        {manualItems.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeManualItem(index)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                      <Input
-                        placeholder="Nome do produto"
-                        value={item.name}
-                        onChange={(e) => updateManualItem(index, "name", e.target.value)}
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <Label className="text-xs">Quantidade</Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => updateManualItem(index, "quantity", Number(e.target.value))}
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Preço unitário</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={item.unitPrice}
-                            onChange={(e) => updateManualItem(index, "unitPrice", Number(e.target.value))}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
                 </div>
-
-                <div className="pt-4 border-t">
-                  <div className="flex justify-between items-center mb-4">
-                    <span className="font-semibold">Total:</span>
-                    <span className="font-display font-bold text-xl text-primary">
-                      {formatCurrency(
-                        manualItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
-                      )}
-                    </span>
-                  </div>
-                  <Button
-                    className="w-full"
-                    onClick={handleSaveManualPurchase}
-                    disabled={saving}
-                  >
-                    {saving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Salvando...
-                      </>
-                    ) : (
-                      "Salvar Compra"
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </SheetContent>
-          </Sheet>
+              </SheetContent>
+            </Sheet>
+          </div>
         </div>
 
-        {purchases.length === 0 ? (
+        {/* Filters Section */}
+        {showFilters && (
+          <Card className="mb-4 card-elevated">
+            <CardContent className="pt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-sm">Filtros</span>
+                {hasActiveFilters && (
+                  <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs gap-1">
+                    <X className="h-3 w-3" />
+                    Limpar
+                  </Button>
+                )}
+              </div>
+              <div className="grid gap-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Supermercado</Label>
+                  <Select value={filterSupermarket} onValueChange={setFilterSupermarket}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {uniqueSupermarkets.map((supermarket) => (
+                        <SelectItem key={supermarket} value={supermarket}>
+                          {supermarket}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Data inicial</Label>
+                    <Input
+                      type="date"
+                      value={filterDateFrom}
+                      onChange={(e) => setFilterDateFrom(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Data final</Label>
+                    <Input
+                      type="date"
+                      value={filterDateTo}
+                      onChange={(e) => setFilterDateTo(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {filteredPurchases.length === 0 ? (
           <Card className="card-elevated">
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Receipt className="h-16 w-16 text-muted-foreground mb-4" />
               <h3 className="font-display font-semibold text-lg mb-2">
-                Nenhuma compra registrada
+                {hasActiveFilters ? "Nenhuma compra encontrada" : "Nenhuma compra registrada"}
               </h3>
               <p className="text-muted-foreground text-center">
-                Use o Leitor para adicionar suas compras
+                {hasActiveFilters
+                  ? "Tente ajustar os filtros"
+                  : "Use o Leitor para adicionar suas compras"}
               </p>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-4">
-            {purchases.map((purchase) => (
+            {filteredPurchases.map((purchase) => (
               <Card
                 key={purchase.id}
                 className="card-elevated cursor-pointer hover:shadow-xl transition-all duration-200"
@@ -373,11 +620,29 @@ export default function Historico() {
                         </div>
                       </div>
                     </div>
-                    {purchase.total_amount && (
-                      <span className="font-display font-bold text-lg text-primary">
-                        {formatCurrency(purchase.total_amount)}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => handleEditPurchase(purchase, e)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <Pencil className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => handleDeleteClick(purchase.id, e)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                      {purchase.total_amount && (
+                        <span className="font-display font-bold text-lg text-primary ml-2">
+                          {formatCurrency(purchase.total_amount)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
 
@@ -418,6 +683,35 @@ export default function Historico() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir compra?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. A compra e todos os seus itens serão removidos permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                "Excluir"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }
