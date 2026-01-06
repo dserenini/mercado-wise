@@ -34,17 +34,20 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-lg border-b border-border">
       <div className="container flex h-16 items-center justify-between px-4">
-        <div className="flex items-center gap-3">
+        <button
+          onClick={() => navigate("/")}
+          className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+        >
           <div className="gradient-primary rounded-xl p-2">
             <span className="text-xl">🛒</span>
           </div>
-          <div>
+          <div className="text-left">
             <h1 className="font-display font-bold text-lg text-foreground">
               Mercado Fácil
             </h1>
             <p className="text-xs text-muted-foreground">Economize com inteligência</p>
           </div>
-        </div>
+        </button>
 
         <div className="flex items-center gap-2">
           <Button
