@@ -338,8 +338,11 @@ export default function Historico() {
         return;
       }
 
-      // Delete old items and insert new ones
-      await supabase.from("purchase_items").delete().eq("purchase_id", editingPurchase.id);
+      // Soft delete old items (inactivate) instead of hard delete
+      await supabase
+        .from("purchase_items")
+        .update({ is_active: false })
+        .eq("purchase_id", editingPurchase.id);
 
       const itemsToInsert = validItems.map((item) => ({
         purchase_id: editingPurchase.id,
