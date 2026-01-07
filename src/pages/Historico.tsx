@@ -39,6 +39,8 @@ interface ManualItem {
   quantity: number;
   unitPrice: number;
   isPromotion: boolean;
+  packageSize: string;
+  packageUnit: string;
 }
 
 export default function Historico() {
@@ -67,7 +69,7 @@ export default function Historico() {
   // Manual purchase form state
   const [supermarketName, setSupermarketName] = useState("");
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split("T")[0]);
-  const [manualItems, setManualItems] = useState<ManualItem[]>([{ name: "", quantity: 1, unitPrice: 0, isPromotion: false }]);
+  const [manualItems, setManualItems] = useState<ManualItem[]>([{ name: "", quantity: 1, unitPrice: 0, isPromotion: false, packageSize: "", packageUnit: "ml" }]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -156,7 +158,7 @@ export default function Historico() {
   };
 
   const addManualItem = () => {
-    setManualItems([...manualItems, { name: "", quantity: 1, unitPrice: 0, isPromotion: false }]);
+    setManualItems([...manualItems, { name: "", quantity: 1, unitPrice: 0, isPromotion: false, packageSize: "", packageUnit: "ml" }]);
   };
 
   const removeManualItem = (index: number) => {
@@ -174,7 +176,7 @@ export default function Historico() {
   const resetForm = () => {
     setSupermarketName("");
     setPurchaseDate(new Date().toISOString().split("T")[0]);
-    setManualItems([{ name: "", quantity: 1, unitPrice: 0, isPromotion: false }]);
+    setManualItems([{ name: "", quantity: 1, unitPrice: 0, isPromotion: false, packageSize: "", packageUnit: "ml" }]);
     setEditingPurchase(null);
   };
 
@@ -196,13 +198,15 @@ export default function Historico() {
     setPurchaseDate(purchase.purchase_date);
     setManualItems(
       items.length > 0
-        ? items.map((item) => ({
+        ? items.map((item: any) => ({
             name: item.product_name,
             quantity: item.quantity || 1,
             unitPrice: item.unit_price,
             isPromotion: item.is_promotion || false,
+            packageSize: item.package_size?.toString() || "",
+            packageUnit: item.package_unit || "ml",
           }))
-        : [{ name: "", quantity: 1, unitPrice: 0, isPromotion: false }]
+        : [{ name: "", quantity: 1, unitPrice: 0, isPromotion: false, packageSize: "", packageUnit: "ml" }]
     );
     setSheetOpen(true);
   };
@@ -344,6 +348,8 @@ export default function Historico() {
         unit_price: item.unitPrice,
         total_price: item.quantity * item.unitPrice,
         is_promotion: item.isPromotion,
+        package_size: item.packageSize ? parseFloat(item.packageSize) : null,
+        package_unit: item.packageUnit || null,
       }));
 
       const { error: itemsError } = await supabase.from("purchase_items").insert(itemsToInsert);
@@ -393,6 +399,8 @@ export default function Historico() {
         unit_price: item.unitPrice,
         total_price: item.quantity * item.unitPrice,
         is_promotion: item.isPromotion,
+        package_size: item.packageSize ? parseFloat(item.packageSize) : null,
+        package_unit: item.packageUnit || null,
       }));
 
       const { error: itemsError } = await supabase.from("purchase_items").insert(itemsToInsert);
@@ -544,6 +552,37 @@ export default function Historico() {
                               value={item.unitPrice}
                               onChange={(e) => updateManualItem(index, "unitPrice", Number(e.target.value))}
                             />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs">Tamanho emb.</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="Ex: 473"
+                              value={item.packageSize}
+                              onChange={(e) => updateManualItem(index, "packageSize", e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Unidade</Label>
+                            <Select
+                              value={item.packageUnit}
+                              onValueChange={(val) => updateManualItem(index, "packageUnit", val)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ml">ml</SelectItem>
+                                <SelectItem value="l">L</SelectItem>
+                                <SelectItem value="g">g</SelectItem>
+                                <SelectItem value="kg">kg</SelectItem>
+                                <SelectItem value="un">un</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                         </div>
                         <div className="flex items-center justify-between pt-2">

@@ -162,6 +162,8 @@ export type Database = {
           created_at: string
           id: string
           is_promotion: boolean | null
+          package_size: number | null
+          package_unit: string | null
           product_id: string | null
           product_name: string
           purchase_id: string
@@ -174,6 +176,8 @@ export type Database = {
           created_at?: string
           id?: string
           is_promotion?: boolean | null
+          package_size?: number | null
+          package_unit?: string | null
           product_id?: string | null
           product_name: string
           purchase_id: string
@@ -186,6 +190,8 @@ export type Database = {
           created_at?: string
           id?: string
           is_promotion?: boolean | null
+          package_size?: number | null
+          package_unit?: string | null
           product_id?: string | null
           product_name?: string
           purchase_id?: string
