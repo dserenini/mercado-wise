@@ -161,6 +161,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_active: boolean
           is_promotion: boolean | null
           package_size: number | null
           package_unit: string | null
@@ -175,6 +176,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_active?: boolean
           is_promotion?: boolean | null
           package_size?: number | null
           package_unit?: string | null
@@ -189,6 +191,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_active?: boolean
           is_promotion?: boolean | null
           package_size?: number | null
           package_unit?: string | null
