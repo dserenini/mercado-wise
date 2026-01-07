@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Loader2, TrendingUp, TrendingDown, Store, ShoppingBag, BarChart3 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import { PriceComparison } from "@/components/PriceComparison";
 
 interface PriceData {
   date: string;
@@ -27,6 +28,18 @@ interface ProductStats {
   purchase_count: number;
 }
 
+interface PurchaseItemWithDetails {
+  id: string;
+  product_name: string;
+  unit_price: number;
+  quantity: number;
+  total_price: number;
+  package_size: number | null;
+  package_unit: string | null;
+  purchase_date: string;
+  supermarket_name: string | null;
+}
+
 export default function Insights() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
@@ -38,6 +51,7 @@ export default function Insights() {
   const [productStats, setProductStats] = useState<ProductStats[]>([]);
   const [totalSpent, setTotalSpent] = useState(0);
   const [purchaseCount, setPurchaseCount] = useState(0);
+  const [allItems, setAllItems] = useState<PurchaseItemWithDetails[]>([]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -99,6 +113,8 @@ export default function Insights() {
 
         // Calculate product stats from items
         const products = new Map<string, { prices: number[]; count: number }>();
+        const itemsWithDetails: PurchaseItemWithDetails[] = [];
+        
         purchases.forEach((p) => {
           if (p.purchase_items) {
             (p.purchase_items as any[]).forEach((item) => {
@@ -106,9 +122,24 @@ export default function Insights() {
               current.prices.push(item.unit_price);
               current.count += 1;
               products.set(item.product_name, current);
+              
+              // Collect items for price comparison
+              itemsWithDetails.push({
+                id: item.id,
+                product_name: item.product_name,
+                unit_price: item.unit_price,
+                quantity: item.quantity || 1,
+                total_price: item.total_price || item.unit_price * (item.quantity || 1),
+                package_size: item.package_size,
+                package_unit: item.package_unit,
+                purchase_date: p.purchase_date,
+                supermarket_name: p.supermarket_name,
+              });
             });
           }
         });
+
+        setAllItems(itemsWithDetails);
 
         const productArray: ProductStats[] = Array.from(products.entries())
           .map(([name, data]) => ({
@@ -247,6 +278,9 @@ export default function Insights() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Price Comparison Component */}
+            <PriceComparison items={allItems} />
 
             {/* Price Evolution Chart */}
             {priceHistory.length > 1 && (
