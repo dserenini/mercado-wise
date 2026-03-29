@@ -12,7 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Receipt, Store, Calendar, Tag, Plus, Trash2, Filter, Pencil, X } from "lucide-react";
+import { Loader2, Receipt, Store, Calendar, Tag, Plus, Trash2, Filter, Pencil, X, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface PurchaseItem {
@@ -35,12 +35,14 @@ interface Purchase {
 }
 
 interface ManualItem {
+  id?: string;
   name: string;
   quantity: number;
   unitPrice: number;
   isPromotion: boolean;
   packageSize: string;
   packageUnit: string;
+  markedForDeletion?: boolean;
 }
 
 export default function Historico() {
@@ -145,7 +147,8 @@ export default function Historico() {
     const { data, error } = await supabase
       .from("purchase_items")
       .select("*")
-      .eq("purchase_id", purchaseId);
+      .eq("purchase_id", purchaseId)
+      .eq("is_active", true);
 
     if (!error && data) {
       setPurchases((prev) =>
@@ -161,10 +164,14 @@ export default function Historico() {
     setManualItems([...manualItems, { name: "", quantity: 1, unitPrice: 0, isPromotion: false, packageSize: "", packageUnit: "ml" }]);
   };
 
-  const removeManualItem = (index: number) => {
-    if (manualItems.length > 1) {
-      setManualItems(manualItems.filter((_, i) => i !== index));
-    }
+  /* Removed removeManualItem in favor of soft toggle */
+  const toggleDeletion = (index: number) => {
+    const updated = [...manualItems];
+    updated[index] = {
+      ...updated[index],
+      markedForDeletion: !updated[index].markedForDeletion
+    };
+    setManualItems(updated);
   };
 
   const updateManualItem = (index: number, field: keyof ManualItem, value: string | number | boolean) => {
@@ -176,20 +183,21 @@ export default function Historico() {
   const resetForm = () => {
     setSupermarketName("");
     setPurchaseDate(new Date().toISOString().split("T")[0]);
-    setManualItems([{ name: "", quantity: 1, unitPrice: 0, isPromotion: false, packageSize: "", packageUnit: "ml" }]);
+    setManualItems([{ name: "", quantity: 1, unitPrice: 0, isPromotion: false, packageSize: "", packageUnit: "ml", markedForDeletion: false }]);
     setEditingPurchase(null);
   };
 
   const handleEditPurchase = async (purchase: Purchase, e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     // Fetch items if not already loaded
     let items = purchase.items;
     if (!items) {
       const { data } = await supabase
         .from("purchase_items")
         .select("*")
-        .eq("purchase_id", purchase.id);
+        .eq("purchase_id", purchase.id)
+        .eq("is_active", true);
       items = data || [];
     }
 
@@ -199,14 +207,16 @@ export default function Historico() {
     setManualItems(
       items.length > 0
         ? items.map((item: any) => ({
-            name: item.product_name,
-            quantity: item.quantity || 1,
-            unitPrice: item.unit_price,
-            isPromotion: item.is_promotion || false,
-            packageSize: item.package_size?.toString() || "",
-            packageUnit: item.package_unit || "ml",
-          }))
-        : [{ name: "", quantity: 1, unitPrice: 0, isPromotion: false, packageSize: "", packageUnit: "ml" }]
+          id: item.id,
+          name: item.product_name,
+          quantity: item.quantity || 1,
+          unitPrice: item.unit_price,
+          isPromotion: item.is_promotion || false,
+          packageSize: item.package_size?.toString() || "",
+          packageUnit: item.package_unit || "ml",
+          markedForDeletion: false
+        }))
+        : [{ name: "", quantity: 1, unitPrice: 0, isPromotion: false, packageSize: "", packageUnit: "ml", markedForDeletion: false }]
     );
     setSheetOpen(true);
   };
@@ -221,10 +231,10 @@ export default function Historico() {
     if (!purchaseToDelete) return;
 
     setDeleting(true);
-    
+
     // Delete items first (due to foreign key)
     await supabase.from("purchase_items").delete().eq("purchase_id", purchaseToDelete);
-    
+
     const { error } = await supabase
       .from("purchase_history")
       .delete()
@@ -266,7 +276,7 @@ export default function Historico() {
     const today = new Date();
     today.setHours(23, 59, 59, 999);
     const selectedDate = new Date(purchaseDate);
-    
+
     if (selectedDate < minDate) {
       toast({
         title: "Data inválida",
@@ -294,134 +304,123 @@ export default function Historico() {
       return;
     }
 
-    // Validação: Quantidade e preço dos itens
-    for (const item of validItems) {
-      if (item.quantity <= 0) {
-        toast({
-          title: "Quantidade inválida",
-          description: `O item "${item.name}" deve ter quantidade maior que zero.`,
-          variant: "destructive",
-        });
-        return;
-      }
-      if (item.unitPrice <= 0) {
-        toast({
-          title: "Preço inválido",
-          description: `O item "${item.name}" deve ter preço unitário maior que zero.`,
-          variant: "destructive",
-        });
-        return;
-      }
+    // Filter out items that are NEW (no id) AND marked for deletion
+    // We only need to process:
+    // 1. Existing items (active or marked for deletion -> soft delete)
+    // 2. New items that are NOT marked for deletion
+
+    const itemsToProcess = validItems.filter(item => {
+      // If validation fails (empty name), skip
+      if (!item.name.trim()) return false;
+
+      // If it's a new item (no id) and marked for deletion, we just ignore it (it was never saved)
+      if (!item.id && item.markedForDeletion) return false;
+
+      return true;
+    });
+
+    if (itemsToProcess.length === 0 && validItems.some(i => !i.markedForDeletion)) {
+      // If we have items but they are allinvalid names, that's already handled.
+      // This checks if we filtered everything out unexpectedly.
     }
 
     setSaving(true);
-    const totalAmount = validItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+
+    // Calculate total ONLY for active items
+    const activeItems = itemsToProcess.filter(i => !i.markedForDeletion);
+    const totalAmount = activeItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+
+    const purchasePayload = {
+      supermarket_name: supermarketName || null,
+      purchase_date: purchaseDate,
+      total_amount: totalAmount,
+    };
+
+    let purchaseId = editingPurchase?.id;
 
     if (editingPurchase) {
-      // Update existing purchase
+      // Update existing purchase header
       const { error: updateError } = await supabase
         .from("purchase_history")
-        .update({
-          supermarket_name: supermarketName || null,
-          purchase_date: purchaseDate,
-          total_amount: totalAmount,
-        })
+        .update(purchasePayload)
         .eq("id", editingPurchase.id);
 
       if (updateError) {
-        toast({
-          title: "Erro ao atualizar compra",
-          description: updateError.message,
-          variant: "destructive",
-        });
+        toast({ title: "Erro ao atualizar compra", description: updateError.message, variant: "destructive" });
         setSaving(false);
         return;
       }
-
-      // Soft delete old items (inactivate) instead of hard delete
-      await supabase
-        .from("purchase_items")
-        .update({ is_active: false })
-        .eq("purchase_id", editingPurchase.id);
-
-      const itemsToInsert = validItems.map((item) => ({
-        purchase_id: editingPurchase.id,
-        product_name: item.name,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        total_price: item.quantity * item.unitPrice,
-        is_promotion: item.isPromotion,
-        package_size: item.packageSize ? parseFloat(item.packageSize) : null,
-        package_unit: item.packageUnit || null,
-      }));
-
-      const { error: itemsError } = await supabase.from("purchase_items").insert(itemsToInsert);
-
-      if (itemsError) {
-        toast({
-          title: "Erro ao atualizar itens",
-          description: itemsError.message,
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Compra atualizada!",
-          description: `${validItems.length} itens salvos com sucesso.`,
-        });
-        resetForm();
-        setSheetOpen(false);
-        fetchPurchases();
-      }
     } else {
-      // Create new purchase
-      const { data: purchaseData, error: purchaseError } = await supabase
+      // Create new purchase header
+      const { data: newPurchase, error: createError } = await supabase
         .from("purchase_history")
         .insert({
           user_id: user.id,
-          supermarket_name: supermarketName || null,
-          purchase_date: purchaseDate,
-          total_amount: totalAmount,
+          ...purchasePayload
         })
         .select()
         .single();
 
-      if (purchaseError) {
-        toast({
-          title: "Erro ao salvar compra",
-          description: purchaseError.message,
-          variant: "destructive",
-        });
+      if (createError) {
+        toast({ title: "Erro ao criar compra", description: createError.message, variant: "destructive" });
         setSaving(false);
         return;
       }
+      purchaseId = newPurchase.id;
+    }
 
-      const itemsToInsert = validItems.map((item) => ({
-        purchase_id: purchaseData.id,
-        product_name: item.name,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        total_price: item.quantity * item.unitPrice,
-        is_promotion: item.isPromotion,
-        package_size: item.packageSize ? parseFloat(item.packageSize) : null,
-        package_unit: item.packageUnit || null,
-      }));
+    if (!purchaseId) {
+      setSaving(false);
+      return;
+    }
 
-      const { error: itemsError } = await supabase.from("purchase_items").insert(itemsToInsert);
+    // Prepare items for Upsert
+    // We process ALL items in itemsToProcess.
+    // - If markedForDeletion: set is_active = false
+    // - Else: set is_active = true
+    const itemsToUpsert = itemsToProcess.map((item) => ({
+      ...(item.id ? { id: item.id } : {}), // Include ID if likely updating
+      purchase_id: purchaseId,
+      product_name: item.name,
+      quantity: item.quantity,
+      unit_price: item.unitPrice,
+      total_price: item.quantity * item.unitPrice,
+      is_promotion: item.isPromotion,
+      package_size: item.packageSize ? parseFloat(item.packageSize) : null,
+      package_unit: item.packageUnit || null,
+      // CRITICAL UPDATE: Set is_active based on the flag
+      is_active: !item.markedForDeletion
+    }));
 
-      if (itemsError) {
-        toast({
-          title: "Erro ao salvar itens",
-          description: itemsError.message,
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Compra adicionada!",
-          description: `${validItems.length} itens salvos com sucesso.`,
-        });
-        resetForm();
-        setSheetOpen(false);
-        fetchPurchases();
+    const { error: itemsError } = await supabase.from("purchase_items").upsert(itemsToUpsert);
+
+    if (itemsError) {
+      toast({ title: "Erro ao salvar itens", description: itemsError.message, variant: "destructive" });
+    } else {
+      toast({
+        title: editingPurchase ? "Compra atualizada!" : "Compra criada!",
+        description: "Dados salvos com sucesso."
+      });
+
+      resetForm();
+      setSheetOpen(false);
+
+      // Refresh Lists
+      fetchPurchases();
+      // If we were editing and it was expanded, refresh items to show updates immediately
+      if (editingPurchase && expandedId === editingPurchase.id) {
+        // Force fetch items for this ID again
+        const { data: updatedItems } = await supabase
+          .from("purchase_items")
+          .select("*")
+          .eq("purchase_id", editingPurchase.id)
+          .eq("is_active", true); // Only active ones for display
+
+        if (updatedItems) {
+          setPurchases(prev => prev.map(p =>
+            p.id === editingPurchase.id ? { ...p, items: updatedItems, total_amount: totalAmount } : p
+          ));
+        }
       }
     }
     setSaving(false);
@@ -459,7 +458,7 @@ export default function Historico() {
           <div>
             <h1 className="font-display font-bold text-2xl">Histórico</h1>
             <p className="text-muted-foreground text-sm">
-              {filteredPurchases.length} {filteredPurchases.length === 1 ? "compra" : "compras"} 
+              {filteredPurchases.length} {filteredPurchases.length === 1 ? "compra" : "compras"}
               {hasActiveFilters && " (filtrado)"}
             </p>
           </div>
@@ -516,17 +515,25 @@ export default function Historico() {
                   <div className="space-y-3">
                     <Label>Itens</Label>
                     {manualItems.map((item, index) => (
-                      <div key={index} className="p-3 bg-muted/50 rounded-xl space-y-2">
+                      <div key={index} className={`p-3 bg-muted/50 rounded-xl space-y-2 transition-opacity duration-200 ${item.markedForDeletion ? 'opacity-50' : 'opacity-100'}`}>
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">Item {index + 1}</span>
-                          {manualItems.length > 1 && (
+                          <span className={`text-sm font-medium ${item.markedForDeletion ? 'line-through text-muted-foreground' : ''}`}>Item {index + 1}</span>
+                          {manualItems.length > 0 && (
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
-                              onClick={() => removeManualItem(index)}
+                              onClick={() => toggleDeletion(index)}
+                              className={item.markedForDeletion ? "text-primary hover:text-primary" : "text-destructive hover:text-destructive"}
                             >
-                              <Trash2 className="h-4 w-4 text-destructive" />
+                              {item.markedForDeletion ? (
+                                <>
+                                  <RefreshCw className="h-4 w-4 mr-2" />
+                                  Desfazer
+                                </>
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
                             </Button>
                           )}
                         </div>
@@ -534,6 +541,8 @@ export default function Historico() {
                           placeholder="Nome do produto"
                           value={item.name}
                           onChange={(e) => updateManualItem(index, "name", e.target.value)}
+                          disabled={item.markedForDeletion}
+                          className={item.markedForDeletion ? 'line-through' : ''}
                         />
                         <div className="grid grid-cols-2 gap-2">
                           <div>
@@ -544,6 +553,7 @@ export default function Historico() {
                               step="0.01"
                               value={item.quantity}
                               onChange={(e) => updateManualItem(index, "quantity", Number(e.target.value))}
+                              disabled={item.markedForDeletion}
                             />
                           </div>
                           <div>
@@ -554,6 +564,7 @@ export default function Historico() {
                               min="0.01"
                               value={item.unitPrice}
                               onChange={(e) => updateManualItem(index, "unitPrice", Number(e.target.value))}
+                              disabled={item.markedForDeletion}
                             />
                           </div>
                         </div>
@@ -567,6 +578,7 @@ export default function Historico() {
                               placeholder="Ex: 473"
                               value={item.packageSize}
                               onChange={(e) => updateManualItem(index, "packageSize", e.target.value)}
+                              disabled={item.markedForDeletion}
                             />
                           </div>
                           <div>
@@ -574,6 +586,7 @@ export default function Historico() {
                             <Select
                               value={item.packageUnit}
                               onValueChange={(val) => updateManualItem(index, "packageUnit", val)}
+                              disabled={item.markedForDeletion}
                             >
                               <SelectTrigger>
                                 <SelectValue />
@@ -596,6 +609,7 @@ export default function Historico() {
                           <Switch
                             checked={item.isPromotion}
                             onCheckedChange={(checked) => updateManualItem(index, "isPromotion", checked)}
+                            disabled={item.markedForDeletion}
                           />
                         </div>
                       </div>
@@ -611,7 +625,9 @@ export default function Historico() {
                       <span className="font-semibold">Total:</span>
                       <span className="font-display font-bold text-xl text-primary">
                         {formatCurrency(
-                          manualItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
+                          manualItems
+                            .filter(i => !i.markedForDeletion)
+                            .reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
                         )}
                       </span>
                     </div>

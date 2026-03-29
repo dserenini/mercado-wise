@@ -12,6 +12,7 @@ import Leitor from "./pages/Leitor";
 import Historico from "./pages/Historico";
 import Insights from "./pages/Insights";
 import NotFound from "./pages/NotFound";
+import ListaDetalhes from "./pages/ListaDetalhes";
 
 const queryClient = new QueryClient();
 
@@ -27,6 +28,7 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/listas" element={<Listas />} />
+              <Route path="/listas/:id" element={<ListaDetalhes />} />
               <Route path="/leitor" element={<Leitor />} />
               <Route path="/historico" element={<Historico />} />
               <Route path="/insights" element={<Insights />} />

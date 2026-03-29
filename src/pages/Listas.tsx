@@ -178,6 +178,7 @@ export default function Listas() {
             {lists.map((list) => (
               <Card
                 key={list.id}
+                onClick={() => navigate(`/listas/${list.id}`)}
                 className="card-elevated cursor-pointer hover:shadow-xl transition-all duration-200 active:scale-[0.98]"
               >
                 <CardHeader className="pb-3">

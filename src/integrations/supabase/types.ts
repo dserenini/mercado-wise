@@ -21,6 +21,7 @@ export type Database = {
           id: string
           is_checked: boolean | null
           list_id: string
+          position: number | null
           product_id: string | null
           product_name: string
           quantity: number | null
@@ -32,6 +33,7 @@ export type Database = {
           id?: string
           is_checked?: boolean | null
           list_id: string
+          position?: number | null
           product_id?: string | null
           product_name: string
           quantity?: number | null
@@ -43,6 +45,7 @@ export type Database = {
           id?: string
           is_checked?: boolean | null
           list_id?: string
+          position?: number | null
           product_id?: string | null
           product_name?: string
           quantity?: number | null
