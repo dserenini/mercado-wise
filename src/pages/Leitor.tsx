@@ -46,18 +46,41 @@ export default function Leitor() {
     }
   };
 
-  const handleProcessImage = () => {
+  const handleProcessImage = async () => {
     if (!imageFile) return;
     setScanning(true);
     
-    // Simula o envio ao servidor Python
-    setTimeout(() => {
-      toast({
-        title: "Aviso: Servidor Python Ausente",
-        description: "A IA ainda não está conectada. Implementaremos o servidor Python na próxima etapa!",
+    // Preparando a imagem para trafegar via HTTP como FormData (Multipart)
+    const formData = new FormData();
+    formData.append("file", imageFile);
+
+    try {
+      const response = await fetch("http://localhost:8000/upload-cupom", {
+        method: "POST",
+        body: formData,
       });
+
+      if (!response.ok) {
+        throw new Error(`Erro: ${response.status}`);
+      }
+
+      const backendData = await response.json();
+      toast({
+        title: "Sucesso no Backend! 🐍",
+        description: backendData.mensagem || "O Python processou sua foto isolada com sucesso.",
+      });
+
+    } catch (e: unknown) {
+      const error = e as Error;
+      toast({
+        title: "Servidor Ausente",
+        description: "Execute o Python na porta 8000 (uvicorn main:app). Detalhes: " + error.message,
+        variant: "destructive"
+      });
+      console.error(error);
+    } finally {
       setScanning(false);
-    }, 2500);
+    }
   };
 
   const handleUrlSubmit = async () => {
