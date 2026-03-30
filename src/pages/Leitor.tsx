@@ -50,9 +50,12 @@ export default function Leitor() {
     if (!imageFile) return;
     setScanning(true);
     
-    // Preparando a imagem para trafegar via HTTP como FormData (Multipart)
+    // Preparando a imagem e dados para envio
     const formData = new FormData();
     formData.append("file", imageFile);
+    if (user) {
+      formData.append("user_id", user.id);
+    }
 
     try {
       const response = await fetch("http://localhost:8000/upload-cupom", {
