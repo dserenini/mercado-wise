@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import logging
 from database import db
+from services.scraper_mg import extract_url_from_image, scrape_sefaz_mg
 
 # Configuração de Logs
 logging.basicConfig(level=logging.INFO)
@@ -40,6 +41,21 @@ async def extract_receipt_data(
     tamanho_mb = len(img_bytes) / (1024 * 1024)
     logger.info(f"💾 Peso do cupom analisado: {tamanho_mb:.2f} MB")
     
+    # Extrair URL via QR Code
+    url_sefaz, layer_used = extract_url_from_image(img_bytes)
+    if not url_sefaz:
+        raise HTTPException(status_code=400, detail="Não foi possível ler a nota. Considere a Leitura por uma IA")
+        
+    logger.info(f"🔗 URL Extraída do QR Code: {url_sefaz}")
+    
+    # Extrair dados Web Scraping (Sefaz)
+    scraping_result = scrape_sefaz_mg(url_sefaz)
+    if not scraping_result.get("success"):
+        raise HTTPException(status_code=500, detail=f"Falha ao ler dados na Nota (Sefaz): {scraping_result.get('error')}")
+        
+    mercado = scraping_result.get("supermarket_name", "Desconhecido")
+    total = scraping_result.get("total_amount", 0.0)
+    
     # 3. Integração com Banco de Dados (Bypass RLS com Service Key)
     try:
         if not db:
@@ -47,22 +63,38 @@ async def extract_receipt_data(
         if not user_id:
             raise ValueError("O usuário não foi detectado (Frontend não mandou user_id).")
             
+        # Inserir o TICKET/COMPRA
         res = db.table("purchase_history").insert({
             "user_id": user_id,
-            "supermarket_name": "Mercado Falso (Via Microserviço Python)",
-            "total_amount": 99.99
+            "supermarket_name": mercado,
+            "total_amount": total,
+            "nfc_url": url_sefaz
         }).execute()
         
-        logger.info(f"✅ Gravação RLS bypassada com sucesso: id {res.data[0].get('id')}")
+        purchase_id = res.data[0].get('id')
+        logger.info(f"✅ Gravação RLS bypassada: Compra #{purchase_id} registrada.")
+        
+        # Inserir a Lista de Produtos
+        itens_raspados = scraping_result.get("items", [])
+        if itens_raspados:
+            for item in itens_raspados:
+                item["purchase_id"] = purchase_id
+            
+            # Insere todo o array batelado no Supabase
+            db.table("purchase_items").insert(itens_raspados).execute()
+            logger.info(f"🛒 {len(itens_raspados)} produtos inseridos para a compra #{purchase_id}.")
         
     except Exception as e:
         logger.error(f"❌ Erro de Banco: {e}")
-        raise HTTPException(status_code=500, detail=f"Erro de Conexão ou Permissão no DB: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro no BD (A tabela purchase_items existe?): {str(e)}")
     
     # FASE 2: Mensagem de Retorno Modificada
+    qtd_produtos = len(scraping_result.get("items", []))
+    
     return {
         "success": True,
-        "mensagem": f"O Python recebeu a imagem e criou o 'Mercado Falso' na aba de Histórico remotamente!"
+        "mensagem": f"Método({layer_used}) Lemos {qtd_produtos} produtos no valor de R$ {total:.2f} do {mercado} e salvamos os itens!",
+        "data": scraping_result
     }
 
 if __name__ == "__main__":

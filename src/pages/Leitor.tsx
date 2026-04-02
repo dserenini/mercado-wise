@@ -64,7 +64,12 @@ export default function Leitor() {
       });
 
       if (!response.ok) {
-        throw new Error(`Erro: ${response.status}`);
+        let errorMessage = `Erro HTTP: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.detail) errorMessage = errorData.detail;
+        } catch (_) {}
+        throw new Error(errorMessage);
       }
 
       const backendData = await response.json();
@@ -76,8 +81,8 @@ export default function Leitor() {
     } catch (e: unknown) {
       const error = e as Error;
       toast({
-        title: "Servidor Ausente",
-        description: "Execute o Python na porta 8000 (uvicorn main:app). Detalhes: " + error.message,
+        title: "Aviso do Sistema",
+        description: error.message,
         variant: "destructive"
       });
       console.error(error);
