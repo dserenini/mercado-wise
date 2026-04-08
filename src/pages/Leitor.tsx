@@ -227,7 +227,7 @@ export default function Leitor() {
                     </div>
                     
                     <Button 
-                      onClick={handleProcessImage}
+                      onClick={() => handleProcessImage(false)}
                       className="w-full touch-target"
                       disabled={scanning}
                     >
