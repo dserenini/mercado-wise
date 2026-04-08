@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import logging
 from database import db
-from services.scraper_mg import extract_url_from_image, scrape_sefaz_mg
+from services.scraper_mg import extract_url_from_image, scrape_sefaz_mg, reload_db_aliases
 
 # Configuração de Logs
 logging.basicConfig(level=logging.INFO)
@@ -20,9 +20,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def on_startup():
+    """Carrega aliases de supermercado do banco uma vez ao iniciar o servidor."""
+    logger.info("🚀 Iniciando servidor — carregando aliases de supermercado do banco...")
+    reload_db_aliases()
+
+
 @app.get("/")
 def home():
     return {"status": "🤖 Servidor IA do Mercado Fácil Online"}
+
 
 @app.post("/upload-cupom")
 async def extract_receipt_data(
@@ -55,21 +63,31 @@ async def extract_receipt_data(
         
     mercado = scraping_result.get("supermarket_name", "Desconhecido")
     total = scraping_result.get("total_amount", 0.0)
-    
+    purchase_date = scraping_result.get("purchase_date")  # "YYYY-MM-DD" ou None
+
     # 3. Integração com Banco de Dados (Bypass RLS com Service Key)
     try:
         if not db:
             raise ValueError("O banco (database.db) não pôde ser iniciado. Faltam chaves de administrador no .env.")
         if not user_id:
             raise ValueError("O usuário não foi detectado (Frontend não mandou user_id).")
-            
-        # Inserir o TICKET/COMPRA
-        res = db.table("purchase_history").insert({
+
+        # Montar payload da compra
+        purchase_payload = {
             "user_id": user_id,
             "supermarket_name": mercado,
             "total_amount": total,
-            "nfc_url": url_sefaz
-        }).execute()
+            "nfc_url": url_sefaz,
+        }
+        # Só envia purchase_date se conseguir extrair da nota (senão o banco usa default)
+        if purchase_date:
+            purchase_payload["purchase_date"] = purchase_date
+            logger.info(f"📅 Salvando com data da nota: {purchase_date}")
+        else:
+            logger.warning("⚠️ Data da nota não encontrada — banco usará data atual como fallback.")
+
+        # Inserir o TICKET/COMPRA
+        res = db.table("purchase_history").insert(purchase_payload).execute()
         
         purchase_id = res.data[0].get('id')
         logger.info(f"✅ Gravação RLS bypassada: Compra #{purchase_id} registrada.")

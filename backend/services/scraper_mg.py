@@ -8,8 +8,162 @@ import logging
 import cv2
 import os
 import numpy as np
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+# Aliases carregados do banco (populados em _load_db_aliases, chamado no startup da API)
+# Lista de dicts: [{"alias": str, "display_name": str}, ...] ordenada por priority
+_DB_ALIASES: list[dict] = []
+
+def reload_db_aliases():
+    """Carrega (ou recarrega) os aliases de supermercado do banco.
+    Chamado uma vez no startup da API. Pode ser re-chamado para atualizar sem reiniciar.
+    """
+    global _DB_ALIASES
+    try:
+        from database import load_supermarket_aliases
+        _DB_ALIASES = load_supermarket_aliases()
+    except Exception as e:
+        logger.error(f"Erro ao carregar aliases do banco: {e}")
+        _DB_ALIASES = []
+
+# ===========================================================================
+# DICIONÁRIO DE MERCADOS CONHECIDOS
+# Chave: substring que aparece no nome bruto (UPPER)
+# Valor: nome limpo para exibição
+# ===========================================================================
+KNOWN_MARKETS = {
+    "ATACADAO": "Atacadão",
+    "ATACADÃO": "Atacadão",
+    "ASSAI": "Assaí",
+    "ASSAÍ": "Assaí",
+    "CARREFOUR": "Carrefour",
+    "EXTRA": "Extra",
+    "PÃO DE AÇÚCAR": "Pão de Açúcar",
+    "PAO DE ACUCAR": "Pão de Açúcar",
+    "WALMART": "Walmart",
+    "MUFFATO": "Super Muffato",
+    "BH SUPERMERCADOS": "Supermercados BH",
+    "SUPERMERCADOS BH": "Supermercados BH",
+    "PREZUNIC": "Prezunic",
+    "PAGUE MENOS": "Pague Menos",
+    "BAHIA": "Casas Bahia",
+    "MAKRO": "Makro",
+    "SAM'S CLUB": "Sam's Club",
+    "SAMS CLUB": "Sam's Club",
+    "HORTIFRUTI": "Hortifruti",
+    "NATURAL DA TERRA": "Natural da Terra",
+    "REDE SMART": "Rede Smart",
+    "SMART": "Smart",
+    "COMPER": "Comper",
+    "ANGELONI": "Angeloni",
+    "ZAFFARI": "Zaffari",
+    "BISTEK": "Bistek",
+    "ENXUTO": "Enxuto",
+    "MATEUS": "Mateus",
+    "NORDESTÃO": "Nordestão",
+    "NORDESTAO": "Nordestão",
+    "SUPERNOSSO": "SuperNosso",
+    "SUPER NOSSO": "SuperNosso",
+    "EPA": "EPA",
+    "NAGUMO": "Nagumo",
+    "VERDEMAR": "Verdemar",
+    "MINEIRÃO": "Mineirão",
+    "MINEIRAO": "Mineirão",
+    "ECOMIX": "Ecomix",
+}
+
+# Sufixos jurídicos a remover do nome bruto
+_LEGAL_SUFFIXES = re.compile(
+    r'\b(LTDA\.?|S\.?/?A\.?|EIRELI|EPP|ME\b|CIA\.?|'
+    r'COMERCIO|COM\.?|DE ALIMENTOS|ALIMENTOS|PRODUTOS|'
+    r'DISTRIBUIDORA?|SUPERMERCADOS?|HIPERMERCADOS?|'
+    r'ATACADO|ATACADISTA|MERCADO|MERCEARIA|'
+    r'INDUSTRIA E COMERCIO|IND\.? E COM\.?|'
+    r'INDUSTRIA|IND\.?)'
+    r'\.?\s*',
+    re.IGNORECASE
+)
+
+
+def clean_market_name(raw: str) -> str:
+    """Limpa e normaliza o nome do supermercado extraído da Sefaz.
+
+    Ordem de prioridade:
+      1. Aliases do banco de dados (supermarket_aliases)
+      2. Dicionário local KNOWN_MARKETS (fallback embutido)
+      3. Remoção de sufixos jurídicos + title case
+    """
+    if not raw or raw.strip() == "":
+        return "Mercado Desconhecido"
+
+    raw_upper = raw.upper().strip()
+
+    # 1. Verificar aliases do banco (já ordenados por priority)
+    for entry in _DB_ALIASES:
+        alias_upper = entry["alias"].upper()
+        if alias_upper in raw_upper:
+            return entry["display_name"]
+
+    # 2. Fallback: dicionário local embutido
+    for key, display_name in KNOWN_MARKETS.items():
+        if key.upper() in raw_upper:
+            return display_name
+
+    # 3. Remoção de sufixos jurídicos
+    cleaned = _LEGAL_SUFFIXES.sub(' ', raw)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip(' ,.-/')
+    cleaned = cleaned.title()
+    if len(cleaned) > 40:
+        cleaned = cleaned[:40].rsplit(' ', 1)[0].strip()
+
+    return cleaned if cleaned else "Mercado Desconhecido"
+
+
+def extract_purchase_date(body_text: str, soup) -> str | None:
+    """Tenta extrair a data de emissão da nota fiscal.
+    Retorna string ISO 'YYYY-MM-DD' ou None se não encontrar.
+    """
+    # Padrão 1: "Emissão: 01/12/2025" ou "Emissao 01/12/2025 14:35"
+    m = re.search(
+        r'Emiss[aã]o\s*:?\s*(\d{2}/\d{2}/\d{4})',
+        body_text, re.IGNORECASE
+    )
+    if m:
+        try:
+            return datetime.strptime(m.group(1), "%d/%m/%Y").date().isoformat()
+        except ValueError:
+            pass
+
+    # Padrão 2: spans/tds com texto de data próximo a "Emissão"
+    emissao_tag = soup.find(string=re.compile(r'Emiss[aã]o', re.I))
+    if emissao_tag:
+        parent = emissao_tag.parent
+        # Tentar pegar o próximo elemento irmão ou o texto do próprio pai
+        candidate_text = ""
+        sibling = parent.find_next_sibling()
+        if sibling:
+            candidate_text = sibling.get_text()
+        else:
+            candidate_text = parent.get_text()
+
+        m2 = re.search(r'(\d{2}/\d{2}/\d{4})', candidate_text)
+        if m2:
+            try:
+                return datetime.strptime(m2.group(1), "%d/%m/%Y").date().isoformat()
+            except ValueError:
+                pass
+
+    # Padrão 3: qualquer data no formato DD/MM/YYYY no body (último recurso)
+    m3 = re.search(r'(\d{2}/\d{2}/\d{4})', body_text)
+    if m3:
+        try:
+            return datetime.strptime(m3.group(1), "%d/%m/%Y").date().isoformat()
+        except ValueError:
+            pass
+
+    return None
 
 def parse_brl_to_float(val_str: str) -> float:
     """Função segura para converter formato brasileiro e americano para float."""
@@ -101,15 +255,15 @@ def scrape_sefaz_mg(url: str) -> dict:
         soup = BeautifulSoup(response.text, 'html.parser')
         
         # 1. Tentar pegar o Nome do Estabelecimento
-        market_name = "Mercado Desconhecido"
+        raw_market_name = "Mercado Desconhecido"
         # Na Sefaz MG geralmente fica num div com id u20 ou na classe txtTopo
         topo_div = soup.find('div', id='u20')
         if topo_div:
-            market_name = topo_div.get_text(strip=True)
+            raw_market_name = topo_div.get_text(strip=True)
         else:
             txt_topo = soup.find('div', class_='txtTopo')
             if txt_topo:
-                market_name = txt_topo.get_text(strip=True)
+                raw_market_name = txt_topo.get_text(strip=True)
         
         # 2. Tentar pegar o Valor Total
         total_amount = 0.0
@@ -158,19 +312,29 @@ def scrape_sefaz_mg(url: str) -> dict:
 
         # ====== TENTATIVA 2: Layout Secundário (portalsped) ou Novo Padrão =======
         body_text = soup.body.get_text(separator=' ', strip=True) if soup.body else ""
-        
-        if market_name == "Mercado Desconhecido":
+
+        # Extrair data da nota
+        purchase_date = extract_purchase_date(body_text, soup)
+        if purchase_date:
+            logger.info(f"📅 Data da nota extraída: {purchase_date}")
+        else:
+            logger.warning("⚠️ Não foi possível extrair a data da nota.")
+
+        if raw_market_name == "Mercado Desconhecido":
             m_cnpj = re.search(r'([^\.]+)\s+CNPJ:', body_text)
             if m_cnpj:
-                market_name = m_cnpj.group(1).strip()
-                market_name = re.sub(r'.*?\(NFC-e\)\s*', '', market_name).strip()
-                if not market_name:
-                    market_name = "Mercado Desconhecido"
+                raw_market_name = m_cnpj.group(1).strip()
+                raw_market_name = re.sub(r'.*?\(NFC-e\)\s*', '', raw_market_name).strip()
+                if not raw_market_name:
+                    raw_market_name = "Mercado Desconhecido"
             
         if total_amount == 0.0:
             m_pago = re.search(r'Valor pago R\$?\s*([\d\.,]+)', body_text, re.I)
             if m_pago:
                 total_amount = parse_brl_to_float(m_pago.group(1))
+
+        # Normalizar nome do mercado (após tentativas de extração)
+        market_name = clean_market_name(raw_market_name)
                     
         # Items pelo layout de H7 (Layout Secundário)
         if not items_comprados:
@@ -203,14 +367,17 @@ def scrape_sefaz_mg(url: str) -> dict:
                     "total_price": total_item
                 })
         
-        # Último caso extremo: Mercado Desconhecido
+        # Último caso extremo: ainda desconhecido mas tem S/A no texto
         if market_name == "Mercado Desconhecido" and "S/A" in body_text:
-             market_name = "Supermercado (Sefaz)"
+            market_name = "Supermercado (Sefaz)"
+
+        logger.info(f"🏪 Nome do mercado: '{raw_market_name}' → '{market_name}'")
 
         return {
             "success": True,
             "supermarket_name": market_name,
             "total_amount": total_amount,
+            "purchase_date": purchase_date,
             "url": url,
             "items": items_comprados
         }
