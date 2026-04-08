@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { QrCode, Link, Loader2, AlertCircle, FileText, Camera, Upload, X, ImagePlus } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { QrCode, Link, Loader2, AlertCircle, FileText, Camera, Upload, X, ImagePlus, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Leitor() {
@@ -19,6 +20,18 @@ export default function Leitor() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Estado para controle de duplicatas
+  const [duplicateInfo, setDuplicateInfo] = useState<{
+    mensagem: string;
+    existing: {
+      id: string;
+      supermarket_name: string;
+      purchase_date: string;
+      total_amount: number;
+    };
+    scraped_data: any;
+  } | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -46,49 +59,73 @@ export default function Leitor() {
     }
   };
 
-  const handleProcessImage = async () => {
-    if (!imageFile) return;
-    setScanning(true);
-    
-    // Preparando a imagem e dados para envio
+  const sendToBackend = async (file: File, forceSave = false) => {
     const formData = new FormData();
-    formData.append("file", imageFile);
-    if (user) {
-      formData.append("user_id", user.id);
+    formData.append("file", file);
+    if (user) formData.append("user_id", user.id);
+    formData.append("force_save", forceSave ? "true" : "false");
+
+    const response = await fetch("http://localhost:8000/upload-cupom", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      let errorMessage = `Erro HTTP: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        if (errorData.detail) errorMessage = errorData.detail;
+      } catch (_) {}
+      throw new Error(errorMessage);
     }
 
-    try {
-      const response = await fetch("http://localhost:8000/upload-cupom", {
-        method: "POST",
-        body: formData,
-      });
+    return response.json();
+  };
 
-      if (!response.ok) {
-        let errorMessage = `Erro HTTP: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          if (errorData.detail) errorMessage = errorData.detail;
-        } catch (_) {}
-        throw new Error(errorMessage);
+  const handleProcessImage = async (forceSave = false) => {
+    if (!imageFile) return;
+    setScanning(true);
+
+    try {
+      const backendData = await sendToBackend(imageFile, forceSave);
+
+      // Nota duplicada — abrir dialog de confirmação
+      if (backendData.status === "duplicate") {
+        setDuplicateInfo({
+          mensagem:     backendData.mensagem,
+          existing:     backendData.existing,
+          scraped_data: backendData.scraped_data,
+        });
+        return;
       }
 
-      const backendData = await response.json();
+      // Sucesso
       toast({
-        title: "Sucesso no Backend! 🐍",
-        description: backendData.mensagem || "O Python processou sua foto isolada com sucesso.",
+        title: "Nota salva! ✅",
+        description: backendData.mensagem || "Nota processada e salva com sucesso.",
       });
+      handleClearImage();
 
     } catch (e: unknown) {
       const error = e as Error;
       toast({
-        title: "Aviso do Sistema",
+        title: "Erro ao processar",
         description: error.message,
-        variant: "destructive"
+        variant: "destructive",
       });
       console.error(error);
     } finally {
       setScanning(false);
     }
+  };
+
+  const handleForceSave = async () => {
+    setDuplicateInfo(null);
+    await handleProcessImage(true);
+  };
+
+  const handleCancelDuplicate = () => {
+    setDuplicateInfo(null);
   };
 
   const handleUrlSubmit = async () => {
@@ -277,6 +314,52 @@ export default function Leitor() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Dialog de Confirmação de Duplicata */}
+      <AlertDialog open={!!duplicateInfo} onOpenChange={(open) => !open && handleCancelDuplicate()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              Nota já cadastrada
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>{duplicateInfo?.mensagem}</p>
+                {duplicateInfo?.existing && (
+                  <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm space-y-1">
+                    <p className="font-medium text-foreground">Compra existente no histórico:</p>
+                    <p>🏪 <span className="text-foreground">{duplicateInfo.existing.supermarket_name}</span></p>
+                    <p>📅 <span className="text-foreground">
+                      {duplicateInfo.existing.purchase_date
+                        ? new Date(duplicateInfo.existing.purchase_date + "T12:00:00").toLocaleDateString("pt-BR")
+                        : "Data não informada"}
+                    </span></p>
+                    <p>💰 <span className="text-foreground">
+                      R$ {Number(duplicateInfo.existing.total_amount).toFixed(2).replace(".", ",")}
+                    </span></p>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Deseja adicionar mesmo assim? Isso criará uma entrada duplicada no histórico.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelDuplicate}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleForceSave}
+              className="bg-yellow-500 hover:bg-yellow-600 text-white"
+            >
+              Adicionar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </AppLayout>
   );
 }
