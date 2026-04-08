@@ -43,7 +43,7 @@ def load_supermarket_aliases() -> list[dict]:
     try:
         res = (
             db.table("supermarket_aliases")
-            .select("alias, display_name, priority")
+            .select("alias, display_name, priority, cnpj_base")
             .order("priority", desc=False)
             .execute()
         )

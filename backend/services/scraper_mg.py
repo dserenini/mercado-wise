@@ -28,6 +28,30 @@ def reload_db_aliases():
         logger.error(f"Erro ao carregar aliases do banco: {e}")
         _DB_ALIASES = []
 
+
+def extract_cnpj_base_from_url(url: str) -> str | None:
+    """Extrai os primeiros 8 dígitos do CNPJ a partir da URL do QR Code NFC-e.
+
+    A chave NF-e de 44 dígitos (parâmetro 'p') tem o formato:
+      cUF(2) + AAMM(4) + CNPJ(14) + mod(2) + serie(3) + nNF(9) + tpEmis(1) + cNF(8) + cDV(1)
+
+    O CNPJ começa na posição 6. Os 8 primeiros dígitos (posições 6-13)
+    identificam o grupo empresarial, independente da filial.
+    """
+    try:
+        m = re.search(r'[?&]p=([^|&]+)', url)
+        if not m:
+            return None
+        chave = re.sub(r'[^0-9]', '', m.group(1))  # apenas dígitos
+        if len(chave) < 20:
+            return None
+        cnpj_base = chave[6:14]
+        logger.info(f"🪪 CNPJ base extraído da URL: {cnpj_base}")
+        return cnpj_base
+    except Exception as e:
+        logger.warning(f"Não foi possível extrair CNPJ da URL: {e}")
+        return None
+
 # ===========================================================================
 # DICIONÁRIO DE MERCADOS CONHECIDOS
 # Chave: substring que aparece no nome bruto (UPPER)
@@ -74,51 +98,89 @@ KNOWN_MARKETS = {
     "ECOMIX": "Ecomix",
 }
 
-# Sufixos jurídicos a remover do nome bruto
-_LEGAL_SUFFIXES = re.compile(
-    r'\b(LTDA\.?|S\.?/?A\.?|EIRELI|EPP|ME\b|CIA\.?|'
-    r'COMERCIO|COM\.?|DE ALIMENTOS|ALIMENTOS|PRODUTOS|'
-    r'DISTRIBUIDORA?|SUPERMERCADOS?|HIPERMERCADOS?|'
-    r'ATACADO|ATACADISTA|MERCADO|MERCEARIA|'
-    r'INDUSTRIA E COMERCIO|IND\.? E COM\.?|'
-    r'INDUSTRIA|IND\.?)'
-    r'\.?\s*',
-    re.IGNORECASE
-)
+_NOISE_TOKENS = {
+    "LTDA", "SA", "S/A", "S.A", "EIRELI", "EPP", "ME", "CIA",
+    "COMERCIAL", "COMERCIO", "COML", "COM",
+    "DE", "DO", "DA", "DOS", "DAS", "E",
+    "ALIMENTOS", "DE ALIMENTOS", "PRODUTOS",
+    "DISTRIBUIDORA", "DISTRIBUIDOR",
+    "SUPERMERCADOS", "SUPERMERCADO",
+    "HIPERMERCADOS", "HIPERMERCADO",
+    "ATACADO", "ATACADISTA",
+    "MERCADO", "MERCEARIA",
+    "INDUSTRIA", "IND",
+    "LTDA.", "S.A.", "CIA.",
+}
 
 
-def clean_market_name(raw: str) -> str:
+
+def clean_market_name(raw: str, cnpj_base: str | None = None) -> str:
     """Limpa e normaliza o nome do supermercado extraído da Sefaz.
 
     Ordem de prioridade:
-      1. Aliases do banco de dados (supermarket_aliases)
-      2. Dicionário local KNOWN_MARKETS (fallback embutido)
-      3. Remoção de sufixos jurídicos + title case
+      1. CNPJ base (8 dígitos) — lookup no banco (mais confiável, independe do nome)
+      2. Alias por nome — lookup no banco (substring match, ordenado por priority)
+      3. Dicionário local KNOWN_MARKETS (fallback embutido)
+      4. Remoção token-a-token de sufixos jurídicos + title case
     """
     if not raw or raw.strip() == "":
         return "Mercado Desconhecido"
 
     raw_upper = raw.upper().strip()
 
-    # 1. Verificar aliases do banco (já ordenados por priority)
+    # 1. CNPJ base — método mais confiável
+    if cnpj_base:
+        for entry in _DB_ALIASES:
+            if entry.get("cnpj_base") == cnpj_base:
+                logger.info(f"🏪 Match por CNPJ {cnpj_base}: '{entry['display_name']}'")
+                return entry["display_name"]
+
+    # 2. Alias por nome (substring, já ordenado por priority)
     for entry in _DB_ALIASES:
         alias_upper = entry["alias"].upper()
         if alias_upper in raw_upper:
+            logger.info(f"🏪 Match por alias '{entry['alias']}': '{entry['display_name']}'")
             return entry["display_name"]
 
-    # 2. Fallback: dicionário local embutido
+    # 3. Fallback: dicionário local embutido
     for key, display_name in KNOWN_MARKETS.items():
         if key.upper() in raw_upper:
             return display_name
 
-    # 3. Remoção de sufixos jurídicos
-    cleaned = _LEGAL_SUFFIXES.sub(' ', raw)
-    cleaned = re.sub(r'\s+', ' ', cleaned).strip(' ,.-/')
-    cleaned = cleaned.title()
-    if len(cleaned) > 40:
-        cleaned = cleaned[:40].rsplit(' ', 1)[0].strip()
+    # 4. Limpeza token-a-token (remover palavras jurídicas e ruídos)
+    # Divide o nome em tokens e descarta os que são puro ruído
+    tokens = raw_upper.split()
+    kept = []
+    skip_next = False
+    for i, token in enumerate(tokens):
+        if skip_next:
+            skip_next = False
+            continue
+        # Remover tokens puramente numéricos (ex: "678", "123")
+        if token.isdigit():
+            continue
+        # Remover tokens de ruído jurídico
+        clean_token = token.strip(".,/")
+        if clean_token in _NOISE_TOKENS:
+            continue
+        # Remover padrão "SN" seguido de número (marca Supernosso)
+        if clean_token == "SN" and i + 1 < len(tokens) and tokens[i + 1].isdigit():
+            skip_next = True
+            continue
+        kept.append(token.strip(".,/"))
 
-    return cleaned if cleaned else "Mercado Desconhecido"
+    cleaned = " ".join(kept).title().strip()
+
+    if not cleaned or len(cleaned) < 2:
+        return "Mercado Desconhecido"
+
+    # Truncar se ainda longo demais
+    if len(cleaned) > 40:
+        cleaned = cleaned[:40].rsplit(" ", 1)[0].strip()
+
+    return cleaned
+
+
 
 
 def extract_purchase_date(body_text: str, soup) -> str | None:
@@ -246,6 +308,9 @@ def extract_url_from_image(img_bytes: bytes) -> tuple:
 def scrape_sefaz_mg(url: str) -> dict:
     """Acessa a URL da Sefaz MG e retorna os dados relevantes."""
     try:
+        # Extrair CNPJ base da URL do QR Code (feito antes do request HTTP)
+        cnpj_base = extract_cnpj_base_from_url(url)
+
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
@@ -333,8 +398,8 @@ def scrape_sefaz_mg(url: str) -> dict:
             if m_pago:
                 total_amount = parse_brl_to_float(m_pago.group(1))
 
-        # Normalizar nome do mercado (após tentativas de extração)
-        market_name = clean_market_name(raw_market_name)
+        # Normalizar nome do mercado — CNPJ first, depois alias por nome
+        market_name = clean_market_name(raw_market_name, cnpj_base=cnpj_base)
                     
         # Items pelo layout de H7 (Layout Secundário)
         if not items_comprados:
