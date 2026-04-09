@@ -5,12 +5,14 @@ import logging
 import hashlib
 from database import db
 from services.scraper_mg import extract_url_from_image, scrape_sefaz_mg, reload_db_aliases
+from services.ai_normalizer import AINormalizerService
 
 # Configuração de Logs
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="API IA Mercado Fácil - Motor Ocr")
+ai_service = AINormalizerService()
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,6 +42,57 @@ def compute_items_fingerprint(items: list[dict]) -> str:
         for i in sorted_items
     ]
     return hashlib.md5("|".join(parts).encode()).hexdigest()
+
+
+def process_scraped_items(db_client, raw_items: list[dict], ai: AINormalizerService) -> list[dict]:
+    """Intercepta os itens crus, varre o BD e passa os desconhecidos pelo Gemini antes de salvar."""
+    if not db_client or not raw_items:
+        return raw_items
+
+    unique_raw_names = list({it["product_name"] for it in raw_items})
+
+    try:
+        # CAMADA 1: Cache db
+        res = db_client.table("product_dictionary").select("raw_name, normalized_name").in_("raw_name", unique_raw_names).execute()
+        known_map = {r["raw_name"]: r for r in res.data} if res.data else {}
+
+        unknown_names = [n for n in unique_raw_names if n not in known_map]
+
+        ai_map = {}
+        # CAMADA 2: IA
+        if unknown_names and ai.is_configured():
+            ai_map = ai.normalize_products_batch(unknown_names)
+
+            if ai_map:
+                new_entries = []
+                for raw_str, data in ai_map.items():
+                    new_entries.append({
+                        "raw_name": raw_str,
+                        "normalized_name": data["normalized_name"],
+                        "unit": data.get("unit"),
+                        "category": data.get("category", "Geral"),
+                        "status": "pending",
+                        "confidence_score": 1
+                    })
+                # Grava no banco e permite erro silently para não travar a compra
+                try:
+                    db_client.table("product_dictionary").insert(new_entries).execute()
+                    logger.info(f"💾 {len(new_entries)} novos produtos adicionados ao dicionário (PENDING).")
+                except Exception as e:
+                    logger.error(f"Erro ao salvar novas traduções IA no BD: {e}")
+
+        # SUBSTITUIÇÃO
+        for item in raw_items:
+            raw_name = item["product_name"]
+            if raw_name in known_map:
+                item["product_name"] = known_map[raw_name]["normalized_name"]
+            elif raw_name in ai_map:
+                item["product_name"] = ai_map[raw_name]["normalized_name"]
+
+    except Exception as e:
+        logger.error(f"Erro no pipeline de normalização de produtos: {e}")
+
+    return raw_items
 
 
 def check_duplicate(user_id: str, url_sefaz: str, mercado: str,
@@ -123,7 +176,12 @@ async def extract_receipt_data(
     mercado       = scraping_result.get("supermarket_name", "Desconhecido")
     total         = scraping_result.get("total_amount", 0.0)
     purchase_date = scraping_result.get("purchase_date")
-    itens         = scraping_result.get("items", [])
+    itens_raw     = scraping_result.get("items", [])
+
+    # Pipeline de Normalização (DB + Gemini AI)
+    itens = process_scraped_items(db, itens_raw, ai_service)
+    # Atualiza o dicionário inicial com os valores já traduzidos para o response
+    scraping_result["items"] = itens
 
     # 5. Banco de Dados
     try:
