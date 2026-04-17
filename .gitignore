@@ -50,3 +50,6 @@ dist-ssr
 venv/
 __pycache__/
 *.pyc
+
+# Docker build artifacts
+*.tar
