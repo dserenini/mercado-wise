@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { QrCode, Link, Loader2, AlertCircle, FileText, Camera, Upload, X, ImagePlus, AlertTriangle } from "lucide-react";
+import { QrCode, Link, Loader2, AlertCircle, FileText, Camera, Upload, X, ImagePlus, AlertTriangle, Image as ImageIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Leitor() {
@@ -19,7 +19,8 @@ export default function Leitor() {
   const [scanning, setScanning] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   // Estado para controle de duplicatas
   const [duplicateInfo, setDuplicateInfo] = useState<{
@@ -54,8 +55,11 @@ export default function Leitor() {
       URL.revokeObjectURL(imagePreview);
     }
     setImagePreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = "";
+    }
+    if (galleryInputRef.current) {
+      galleryInputRef.current.value = "";
     }
   };
 
@@ -190,27 +194,53 @@ export default function Leitor() {
           <TabsContent value="scanner" className="space-y-4">
             <Card className="card-elevated">
               <CardContent className="p-6">
+                {/* Input para CÂMERA (com capture) */}
                 <input 
                   type="file" 
                   accept="image/*" 
                   capture="environment" 
                   className="hidden" 
-                  ref={fileInputRef}
+                  ref={cameraInputRef}
+                  onChange={handleImageUpload}
+                />
+                {/* Input para GALERIA (sem capture) */}
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  ref={galleryInputRef}
                   onChange={handleImageUpload}
                 />
                 
                 {!imagePreview ? (
-                  <div 
-                    className="aspect-square max-w-[280px] mx-auto bg-muted rounded-2xl flex flex-col items-center justify-center border-2 border-dashed border-border hover:bg-muted/80 transition-colors cursor-pointer"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <ImagePlus className="h-12 w-12 text-muted-foreground mb-4" />
-                    <p className="text-sm font-medium text-foreground text-center px-4">
-                      Tirar Foto ou Escolher
-                    </p>
-                    <p className="text-xs text-muted-foreground text-center mt-2 px-4">
-                      Tire uma foto legível do cupom fiscal
-                    </p>
+                  <div className="max-w-[320px] mx-auto space-y-4">
+                    <div className="aspect-[4/3] bg-muted rounded-2xl flex flex-col items-center justify-center border-2 border-dashed border-border">
+                      <ImagePlus className="h-10 w-10 text-muted-foreground mb-3" />
+                      <p className="text-sm font-medium text-foreground text-center px-4">
+                        Foto do Cupom Fiscal
+                      </p>
+                      <p className="text-xs text-muted-foreground text-center mt-1 px-4">
+                        Escolha como enviar a imagem do cupom
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button
+                        variant="outline"
+                        className="h-14 flex flex-col items-center justify-center gap-1 touch-target"
+                        onClick={() => cameraInputRef.current?.click()}
+                      >
+                        <Camera className="h-5 w-5" />
+                        <span className="text-xs">Tirar Foto</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="h-14 flex flex-col items-center justify-center gap-1 touch-target"
+                        onClick={() => galleryInputRef.current?.click()}
+                      >
+                        <ImageIcon className="h-5 w-5" />
+                        <span className="text-xs">Galeria</span>
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-4 max-w-[280px] mx-auto">

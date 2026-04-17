@@ -1,4 +1,4 @@
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageOps, ImageFilter
 from pyzbar.pyzbar import decode, ZBarSymbol
 import io
 import requests
@@ -257,49 +257,149 @@ except Exception as e:
     logger.warning(f"Aviso: WeChatQRCode não pôde ser ativado ({e})")
 
 def extract_url_from_image(img_bytes: bytes) -> tuple:
-    """Extrai a URL de um QR Code contido na imagem e retorna (url, camada)."""
+    """Extrai a URL de um QR Code contido na imagem e retorna (url, camada).
+    
+    Pipeline robusto para fotos de celular:
+      - Corrige rotação EXIF (fotos mobile vêm "deitadas")
+      - Testa múltiplos tamanhos (fotos de 12-48MP são muito grandes)
+      - Pré-processamento avançado (binarização, threshold adaptivo, sharpening)
+      - Rotações de 90° como fallback
+    """
     try:
         base_image = Image.open(io.BytesIO(img_bytes))
         
-        # Variantes para testar:
-        # 1. Original
-        # 2. Escala de cinza
-        # 3. Alto contraste
-        # 4. Redimensionada (fotos mto grandes podem atrapalhar)
-        
-        images_to_try = [base_image]
-        
-        # Cria variante cinza
-        gray = base_image.convert('L')
-        images_to_try.append(gray)
-        
-        # Cria variante alto contraste
-        enhancer = ImageEnhance.Contrast(gray)
-        images_to_try.append(enhancer.enhance(2.0))
-        images_to_try.append(enhancer.enhance(3.0))
+        # ── CORREÇÃO EXIF (essencial para fotos de celular) ──────────────
+        try:
+            base_image = ImageOps.exif_transpose(base_image)
+            logger.info(f"📐 Imagem após EXIF transpose: {base_image.size}")
+        except Exception as e:
+            logger.warning(f"⚠️ Falha ao aplicar EXIF transpose: {e}")
         
         width, height = base_image.size
-        # Cria variante redimensionada se for muito grande
-        if max(width, height) > 1000:
-            small_img = base_image.copy()
-            small_img.thumbnail((1000, 1000), Image.Resampling.LANCZOS)
-            images_to_try.append(small_img)
-            images_to_try.append(small_img.convert('L'))
+        logger.info(f"📏 Dimensões originais: {width}x{height}")
+        
+        # ── GERAR VARIANTES PILLOW ───────────────────────────────────────
+        pil_variants = []
+        
+        # Original
+        pil_variants.append(("original", base_image))
+        
+        # Escala de cinza
+        gray = base_image.convert('L')
+        pil_variants.append(("gray", gray))
+        
+        # Contraste aumentado
+        enhancer = ImageEnhance.Contrast(gray)
+        pil_variants.append(("contrast_2x", enhancer.enhance(2.0)))
+        pil_variants.append(("contrast_3x", enhancer.enhance(3.0)))
+        
+        # Sharpening
+        sharp = gray.filter(ImageFilter.SHARPEN)
+        pil_variants.append(("sharp", sharp))
+        
+        # Múltiplos níveis de downscale (essencial para fotos HD de celular)
+        target_sizes = [3000, 2000, 1500, 1000, 800, 500]
+        for size in target_sizes:
+            if max(width, height) > size:
+                resized = base_image.copy()
+                resized.thumbnail((size, size), Image.Resampling.LANCZOS)
+                pil_variants.append((f"resize_{size}", resized))
+                pil_variants.append((f"resize_{size}_gray", resized.convert('L')))
+                # Contraste no redimensionado
+                resized_gray = resized.convert('L')
+                enh = ImageEnhance.Contrast(resized_gray)
+                pil_variants.append((f"resize_{size}_contrast", enh.enhance(2.0)))
 
-        # CAMADA 1: PyZbar (Rápida)
-        for img in images_to_try:
+        # ── CAMADA 1: PyZbar (Rápida) ───────────────────────────────────
+        for name, img in pil_variants:
             decoded_objects = decode(img, symbols=[ZBarSymbol.QRCODE])
             for obj in decoded_objects:
                 if obj.type == 'QRCODE':
-                    return obj.data.decode('utf-8'), 1
+                    url = obj.data.decode('utf-8')
+                    logger.info(f"✅ QR lido por PyZbar (variante: {name})")
+                    return url, 1
                     
-        # CAMADA 2: OpenCV WeChatQRCode (Resiliente)
+        # ── CAMADA 2: OpenCV WeChatQRCode (Resiliente) ───────────────────
         if wechat_detector is not None:
-            cv_img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
-            res, points = wechat_detector.detectAndDecode(cv_img)
-            if res and len(res) > 0 and res[0]:
-                return res[0], 2
+            cv_variants = []
+            
+            # Converter imagem base (já com EXIF corrigido) para OpenCV
+            corrected_bytes = io.BytesIO()
+            base_image.save(corrected_bytes, format='PNG')
+            corrected_bytes = corrected_bytes.getvalue()
+            cv_base = cv2.imdecode(np.frombuffer(corrected_bytes, np.uint8), cv2.IMREAD_COLOR)
+            
+            if cv_base is not None:
+                cv_variants.append(("cv_original", cv_base))
                 
+                # Grayscale
+                cv_gray = cv2.cvtColor(cv_base, cv2.COLOR_BGR2GRAY)
+                cv_variants.append(("cv_gray", cv2.cvtColor(cv_gray, cv2.COLOR_GRAY2BGR)))
+                
+                # Binarização Otsu
+                _, otsu = cv2.threshold(cv_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                cv_variants.append(("cv_otsu", cv2.cvtColor(otsu, cv2.COLOR_GRAY2BGR)))
+                
+                # Threshold Adaptativo
+                adaptive = cv2.adaptiveThreshold(cv_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 51, 10)
+                cv_variants.append(("cv_adaptive", cv2.cvtColor(adaptive, cv2.COLOR_GRAY2BGR)))
+                
+                # CLAHE (equalização local de histograma)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                cl_img = clahe.apply(cv_gray)
+                cv_variants.append(("cv_clahe", cv2.cvtColor(cl_img, cv2.COLOR_GRAY2BGR)))
+                
+                # Sharpening kernel
+                kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+                sharpened = cv2.filter2D(cv_base, -1, kernel)
+                cv_variants.append(("cv_sharp", sharpened))
+                
+                # Redimensionamentos para WeChatQRCode
+                h, w = cv_base.shape[:2]
+                for size in [1500, 1000, 800, 500]:
+                    if max(h, w) > size:
+                        scale = size / max(h, w)
+                        resized_cv = cv2.resize(cv_base, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+                        cv_variants.append((f"cv_resize_{size}", resized_cv))
+                
+                # Testar cada variante
+                for name, cv_img in cv_variants:
+                    try:
+                        res, points = wechat_detector.detectAndDecode(cv_img)
+                        if res and len(res) > 0 and res[0]:
+                            logger.info(f"✅ QR lido por WeChatQRCode (variante: {name})")
+                            return res[0], 2
+                    except Exception as e:
+                        logger.debug(f"WeChatQRCode falhou em {name}: {e}")
+
+        # ── CAMADA 3: Rotações 90° (último recurso) ──────────────────────
+        logger.info("🔄 Tentando rotações de 90°...")
+        for angle in [90, 180, 270]:
+            rotated = base_image.rotate(angle, expand=True)
+            rotated_gray = rotated.convert('L')
+            
+            # PyZbar na imagem rotacionada
+            decoded = decode(rotated_gray, symbols=[ZBarSymbol.QRCODE])
+            for obj in decoded:
+                if obj.type == 'QRCODE':
+                    logger.info(f"✅ QR lido após rotação de {angle}°")
+                    return obj.data.decode('utf-8'), 1
+            
+            # WeChatQRCode na imagem rotacionada
+            if wechat_detector is not None:
+                rot_bytes = io.BytesIO()
+                rotated.save(rot_bytes, format='PNG')
+                rot_cv = cv2.imdecode(np.frombuffer(rot_bytes.getvalue(), np.uint8), cv2.IMREAD_COLOR)
+                if rot_cv is not None:
+                    try:
+                        res, _ = wechat_detector.detectAndDecode(rot_cv)
+                        if res and len(res) > 0 and res[0]:
+                            logger.info(f"✅ QR lido por WeChatQRCode após rotação de {angle}°")
+                            return res[0], 2
+                    except Exception:
+                        pass
+                    
+        logger.warning("❌ Nenhum QR Code detectado após todas as tentativas.")
         return None, 0
     except Exception as e:
         logger.error(f"Erro ao tentar ler o formato da imagem: {e}")
