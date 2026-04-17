@@ -69,7 +69,8 @@ export default function Leitor() {
     if (user) formData.append("user_id", user.id);
     formData.append("force_save", forceSave ? "true" : "false");
 
-    const response = await fetch("http://localhost:8000/upload-cupom", {
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+    const response = await fetch(`${apiUrl}/upload-cupom`, {
       method: "POST",
       body: formData,
     });

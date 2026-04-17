@@ -1,13 +1,7 @@
 # Stage 1: Build da aplicação React/Vite
 FROM node:20-alpine AS build
 
-# Passar as variáveis no momento do build
-ARG VITE_SUPABASE_URL
-ARG VITE_SUPABASE_PUBLISHABLE_KEY
-
-# Converter os argumentos de build em variáveis de ambiente disponíveis na run de build
-ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
-ENV VITE_SUPABASE_PUBLISHABLE_KEY=$VITE_SUPABASE_PUBLISHABLE_KEY
+# Removido ARG e ENV para permitir que o Vite leia livremente do .env copiado
 
 # Diretório de trabalho dentro do container
 WORKDIR /app
