@@ -1,73 +1,87 @@
-# Welcome to your Lovable project
+# Mercado Fácil
 
-## Project info
+App mobile-first (PWA) para registrar compras de supermercado a partir do **QR Code da NFC-e**
+(nota fiscal), acompanhar histórico e ver insights de gastos. Foco atual: **Minas Gerais (Sefaz MG)**.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Arquitetura
 
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+┌─────────────┐   JWT (chave pública)   ┌──────────────────┐
+│  PWA React  │ ──────────────────────▶ │ Supabase         │  dados do usuário (via RLS)
+│ (Vite + TS) │                         │ Postgres + Auth  │
+└─────┬───────┘                         └──────────────────┘
+      │ POST /upload-cupom (Bearer JWT)          ▲
+      ▼                                          │ escreve sob RLS (JWT do usuário)
+┌──────────────────────────────┐                 │
+│ FastAPI (OCR/scrape/normalize)│─────────────────┘
+│  • valida o JWT no Supabase   │
+│  • lê QR (pyzbar/OpenCV)      │──▶ Sefaz MG (allowlist de domínio, anti-SSRF)
+│  • normaliza nomes (Gemini)   │──▶ Google Gemini
+└──────────────────────────────┘
 ```
 
-**Edit a file directly in GitHub**
+**Princípio de segurança:** o backend nunca escreve "em nome do" usuário com a `service_role`.
+Ele valida o JWT e grava usando a chave pública + o token do usuário, de modo que a **RLS**
+continua valendo. A `service_role` só toca tabelas globais (`product_dictionary`, `supermarket_aliases`).
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Stack
 
-**Use GitHub Codespaces**
+- **Frontend:** Vite, React, TypeScript, Tailwind, shadcn/ui, react-query, react-router. PWA via `vite-plugin-pwa`.
+- **Backend:** FastAPI (pacote `backend/app/`), pyzbar/OpenCV (QR), BeautifulSoup (scraping), `google-genai` (normalização), slowapi (rate limit).
+- **Dados/Auth:** Supabase (Postgres + RLS + Auth).
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Setup local
 
-## What technologies are used for this project?
+Pré-requisitos: Node 20+, Python 3.11+, e as libs de sistema do OpenCV/zbar (`libzbar0`, `libgl1`).
 
-This project is built with:
+1. Copie as variáveis de ambiente e preencha:
+   ```sh
+   cp .env.example .env
+   ```
+2. **Frontend:**
+   ```sh
+   npm ci
+   npm run dev        # http://localhost:8080
+   ```
+3. **Backend:**
+   ```sh
+   cd backend
+   python -m venv venv && . venv/Scripts/activate   # (Windows: venv\Scripts\activate)
+   pip install -r requirements.txt
+   uvicorn app.main:app --reload   # http://localhost:8000
+   ```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### Variáveis de ambiente
 
-## How can I deploy this project?
+Veja [.env.example](.env.example). Resumo:
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+| Variável | Escopo | Descrição |
+|---|---|---|
+| `VITE_SUPABASE_URL` | público | URL do projeto Supabase |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | público | Chave pública (anon) |
+| `VITE_API_URL` | público | URL do backend FastAPI |
+| `SUPABASE_SERVICE_ROLE_KEY` | **segredo** | Chave mestra — só tabelas globais |
+| `GEMINI_API_KEY` | **segredo** | API do Gemini |
+| `ALLOWED_ORIGINS` | backend | Origens do CORS (vírgula) |
+| `ALLOWED_SEFAZ_DOMAINS` | backend | Domínios Sefaz aceitos (anti-SSRF) |
+| `MAX_UPLOAD_MB` | backend | Limite de upload |
 
-## Can I connect a custom domain to my Lovable project?
+> Segredos (`SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`) **nunca** vão para o bundle do frontend.
 
-Yes, you can!
+## Testes
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+```sh
+cd backend && pytest        # testes do parser/scraper/allowlist
+npm run typecheck && npm run build   # frontend
+```
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Deploy (Docker)
+
+```sh
+docker compose up --build
+# web  → http://localhost:8080
+# api  → http://localhost:8000
+```
+
+O `docker-compose.yml` injeta apenas as variáveis **públicas** `VITE_*` como build-args do
+frontend; os segredos vão só para o container da API via `env_file`.

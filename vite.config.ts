@@ -42,4 +42,16 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Separa as libs pesadas do chunk principal
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("recharts") || id.includes("d3-")) return "charts";
+          if (id.includes("@radix-ui")) return "radix";
+        },
+      },
+    },
+  },
 }));

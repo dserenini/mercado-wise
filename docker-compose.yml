@@ -1,0 +1,35 @@
+# Orquestração local/VPS: web (Nginx servindo o build React) + api (FastAPI).
+# As variáveis são lidas do arquivo .env na raiz (veja .env.example).
+services:
+  api:
+    build:
+      context: ./backend
+    env_file: .env
+    environment:
+      # Origens permitidas para CORS (o front servido pelo web)
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/').status==200 else sys.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Apenas variáveis PÚBLICAS entram no build do frontend.
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY}
+        VITE_SUPABASE_PROJECT_ID: ${VITE_SUPABASE_PROJECT_ID}
+        VITE_API_URL: ${VITE_API_URL}
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    restart: unless-stopped
