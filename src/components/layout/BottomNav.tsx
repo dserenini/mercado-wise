@@ -1,11 +1,12 @@
 import { Link, useLocation } from "react-router-dom";
-import { Home, List, ScanLine, History, TrendingUp } from "lucide-react";
+import { Home, List, ScanLine, Barcode, History, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { path: "/", icon: Home, label: "Home" },
   { path: "/listas", icon: List, label: "Listas" },
   { path: "/leitor", icon: ScanLine, label: "Leitor" },
+  { path: "/preco", icon: Barcode, label: "Preço" },
   { path: "/historico", icon: History, label: "Histórico" },
   { path: "/insights", icon: TrendingUp, label: "Insights" },
 ];

@@ -10,6 +10,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Listas from "./pages/Listas";
 import Leitor from "./pages/Leitor";
+import Scanner from "./pages/Scanner";
 import Historico from "./pages/Historico";
 import Insights from "./pages/Insights";
 import NotFound from "./pages/NotFound";
@@ -39,6 +40,7 @@ const App = () => (
               <Route path="/listas" element={<ProtectedRoute><Listas /></ProtectedRoute>} />
               <Route path="/listas/:id" element={<ProtectedRoute><ListaDetalhes /></ProtectedRoute>} />
               <Route path="/leitor" element={<ProtectedRoute><Leitor /></ProtectedRoute>} />
+              <Route path="/preco" element={<ProtectedRoute><Scanner /></ProtectedRoute>} />
               <Route path="/historico" element={<ProtectedRoute><Historico /></ProtectedRoute>} />
               <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />

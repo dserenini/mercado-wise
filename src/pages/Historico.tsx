@@ -11,6 +11,7 @@ import {
   type Purchase,
   type PurchaseItem,
 } from "@/hooks/queries/usePurchases";
+import { usePriceObservations } from "@/hooks/queries/usePriceObservations";
 import { PriceThermometer } from "@/components/PriceThermometer";
 import { computeBenchmarks, formatCurrency, type AnalyticsItem, type Benchmark } from "@/lib/analytics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,10 +106,12 @@ export default function Historico() {
 
   const { data: purchases = [], isLoading: loading, error } = usePurchases();
   const { data: purchasesWithItems = [] } = usePurchasesWithItems();
+  const { data: observations = [] } = usePriceObservations();
   const deletePurchase = useDeletePurchase();
   const saveManual = useSaveManualPurchase();
 
   // Média móvel por conceito (termômetro de preço nos itens) — 3.2
+  // Inclui observações de preço (scan de gôndola) para enriquecer a média.
   const benchmarks = useMemo(() => {
     const items: AnalyticsItem[] = [];
     purchasesWithItems.forEach((p) => {
@@ -124,8 +127,19 @@ export default function Historico() {
         });
       });
     });
+    observations.forEach((o) => {
+      items.push({
+        product_name: o.product_name,
+        unit_price: o.price,
+        quantity: 1,
+        package_size: o.package_size,
+        package_unit: o.package_unit,
+        purchase_date: o.observed_at,
+        supermarket_name: o.supermarket_name,
+      });
+    });
     return computeBenchmarks(items);
-  }, [purchasesWithItems]);
+  }, [purchasesWithItems, observations]);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);

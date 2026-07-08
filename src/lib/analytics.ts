@@ -53,6 +53,35 @@ export function comparableValue(item: AnalyticsItem): { value: number; unit: str
 /** Chave de conceito para agrupar o mesmo produto (nome já normalizado no backend). */
 export const conceptKey = (name: string) => name.trim().toLowerCase();
 
+/** Nomes de conceito distintos presentes nos itens (para seleção manual no scan). */
+export function distinctConcepts(items: AnalyticsItem[]): string[] {
+  const map = new Map<string, string>();
+  for (const it of items) {
+    const k = conceptKey(it.product_name);
+    if (k && !map.has(k)) map.set(k, it.product_name);
+  }
+  return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+}
+
+/** Palpite de qual conceito do histórico corresponde a um nome resolvido (Open Food Facts). */
+export function guessConcept(resolvedName: string, concepts: string[]): string | null {
+  const tokens = new Set(
+    resolvedName.toLowerCase().split(/\s+/).filter((t) => t.length >= 3),
+  );
+  if (tokens.size === 0) return null;
+  let best: string | null = null;
+  let bestScore = 0;
+  for (const c of concepts) {
+    let score = 0;
+    for (const t of c.toLowerCase().split(/\s+/)) if (tokens.has(t)) score += 1;
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  return best;
+}
+
 /** Chave de bucket: conceito + unidade base — compara sempre R$/kg com R$/kg. */
 const bucketKey = (name: string, unit: string) => `${conceptKey(name)}||${unit}`;
 
