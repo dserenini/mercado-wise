@@ -21,6 +21,7 @@ class ScrapeResult(TypedDict, total=False):
     url: str
     access_key: str | None
     cnpj: str | None
+    cnpj_base: str | None
     market_address: str | None
     payment_method: str | None
     items: list[ScrapedItem]

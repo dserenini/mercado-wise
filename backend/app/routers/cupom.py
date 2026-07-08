@@ -10,8 +10,14 @@ from app.db import db, user_client
 from app.dependencies import get_current_user, CurrentUser
 from app.limiter import limiter
 from app.services.ai_normalizer import AINormalizerService
-from app.services.dedup import process_scraped_items, check_duplicate
+from app.services.dedup import process_scraped_items, check_duplicate, ITEM_COLUMNS
 from app.services.scrapers import extract_url_from_image, scrape_receipt
+from app.services.scrapers.mg_sefaz import _parse_sefaz_html
+
+# Colunas derivadas/proveniência que o reprocessamento pode sobrescrever com
+# segurança (não toca quantidade/preço/promoção/nota/soft-delete do usuário).
+_REPROCESS_FIELDS = ("product_name", "raw_name", "cprod", "unit", "brand",
+                     "package_size", "package_unit")
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -75,9 +81,11 @@ def _persist_purchase(access_token, user_id, force, url_sefaz, mercado, total,
     purchase_id = res.data[0].get("id")
 
     if itens:
-        for item in itens:
-            item["purchase_id"] = purchase_id
-        uc.table("purchase_items").insert(itens).execute()
+        rows = [
+            {k: v for k, v in item.items() if k in ITEM_COLUMNS} | {"purchase_id": purchase_id}
+            for item in itens
+        ]
+        uc.table("purchase_items").insert(rows).execute()
 
     # HTML cru para reprocessamento futuro — falha aqui não invalida a compra
     if access_key and raw_html:
@@ -144,13 +152,16 @@ async def extract_receipt_data(
     itens_raw = scraping_result.get("items", [])
     access_key = scraping_result.get("access_key")
     cnpj = scraping_result.get("cnpj")
+    cnpj_base = scraping_result.get("cnpj_base")
     payment_method = scraping_result.get("payment_method")
     market_address = scraping_result.get("market_address")
     # O HTML cru não volta na resposta — só vai para receipts_raw
     raw_html = scraping_result.pop("raw_html", None)
 
     # 5. Normalização (rede/BD global → threadpool)
-    itens = await run_in_threadpool(process_scraped_items, db, itens_raw, ai_service)
+    itens = await run_in_threadpool(
+        process_scraped_items, db, itens_raw, ai_service, cnpj_base
+    )
     scraping_result["items"] = itens
 
     # 5b. Catálogo global de mercados (Service Role, tabela global)
@@ -195,4 +206,111 @@ async def extract_receipt_data(
         "status": "saved",
         "mensagem": f"Método({layer_used}) Lemos {len(itens)} produtos no valor de R$ {total:.2f} do {mercado} e salvamos!",
         "data": scraping_result,
+    }
+
+
+def _match_key(it: dict) -> tuple:
+    """Chave estável de um item entre o cru re-parseado e o armazenado (invariante à normalização)."""
+    return (round(float(it.get("quantity") or 0), 3), round(float(it.get("unit_price") or 0), 2))
+
+
+def _reprocess_user_history(access_token, user_id) -> dict:
+    """Relê receipts_raw do usuário, re-parseia e re-normaliza, fazendo backfill dos
+    campos derivados (nome normalizado, marca, embalagem, cProd, unidade) sem tocar
+    em quantidade/preço/promoção/nota/soft-delete."""
+    uc = user_client(access_token)
+    if not uc:
+        raise HTTPException(status_code=503, detail="Serviço de banco indisponível.")
+
+    receipts = uc.table("receipts_raw").select("access_key, raw_html, nfc_url").execute()
+    receipts_data = receipts.data or []
+    purchases_touched = 0
+    items_updated = 0
+
+    for rec in receipts_data:
+        access_key = rec.get("access_key")
+        raw_html = rec.get("raw_html")
+        if not access_key or not raw_html:
+            continue
+
+        cnpj_base = access_key[6:14] if len(access_key) >= 14 else None
+        parsed = _parse_sefaz_html(raw_html, rec.get("nfc_url") or "", cnpj_base)
+        if not parsed.get("success"):
+            continue
+        fresh_items = process_scraped_items(db, parsed.get("items", []), ai_service, cnpj_base)
+
+        purch = (
+            uc.table("purchase_history")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("access_key", access_key)
+            .limit(1)
+            .execute()
+        )
+        if not purch.data:
+            continue
+        purchase_id = purch.data[0]["id"]
+
+        stored = (
+            uc.table("purchase_items")
+            .select("id, quantity, unit_price")
+            .eq("purchase_id", purchase_id)
+            .execute()
+        )
+        # Índice de itens armazenados por chave estável (pode haver repetidos)
+        buckets: dict[tuple, list] = {}
+        for si in (stored.data or []):
+            buckets.setdefault(_match_key(si), []).append(si["id"])
+
+        for fi in fresh_items:
+            ids = buckets.get(_match_key(fi))
+            if not ids:
+                continue
+            stored_id = ids.pop(0)
+            patch = {k: fi.get(k) for k in _REPROCESS_FIELDS if fi.get(k) is not None}
+            if not patch:
+                continue
+            uc.table("purchase_items").update(patch).eq("id", stored_id).execute()
+            items_updated += 1
+
+        # Backfill do cabeçalho (proveniência) quando faltante
+        header_patch = {}
+        if parsed.get("cnpj"):
+            header_patch["cnpj"] = parsed["cnpj"]
+        if parsed.get("payment_method"):
+            header_patch["payment_method"] = parsed["payment_method"]
+        if header_patch:
+            uc.table("purchase_history").update(header_patch).eq("id", purchase_id).execute()
+        purchases_touched += 1
+
+    return {"receipts": len(receipts_data), "purchases": purchases_touched, "items_updated": items_updated}
+
+
+@router.post("/reprocessar-historico")
+@limiter.limit("2/minute")
+async def reprocess_history(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Re-aplica o parser/normalização atuais ao histórico do usuário a partir do HTML
+    cru guardado (receipts_raw). Idempotente. Preserva edições manuais do usuário."""
+    try:
+        result = await run_in_threadpool(
+            _reprocess_user_history, current_user.access_token, current_user.id
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erro ao reprocessar histórico: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao reprocessar o histórico.")
+
+    logger.info(
+        f"♻️ Reprocessamento: {result['purchases']} compras, "
+        f"{result['items_updated']} itens atualizados (user {current_user.id})."
+    )
+    return {
+        "success": True,
+        "mensagem": f"Reprocessamos {result['purchases']} nota(s) e atualizamos "
+                    f"{result['items_updated']} item(ns).",
+        **result,
     }

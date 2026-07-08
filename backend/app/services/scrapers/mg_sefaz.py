@@ -375,6 +375,7 @@ def _parse_sefaz_html(html: str, url: str, cnpj_base: str | None) -> ScrapeResul
         "url": url,
         "access_key": access_key,
         "cnpj": cnpj,
+        "cnpj_base": cnpj_base or (access_key[6:14] if access_key else None),
         "market_address": market_address,
         "payment_method": payment_method,
         "items": items_comprados,
