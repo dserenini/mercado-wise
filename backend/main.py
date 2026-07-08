@@ -1,9 +1,17 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
-import logging
+import os
 import hashlib
-from database import db
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+import uvicorn
+
+from database import db, user_client
+from auth import get_current_user, CurrentUser
 from services.scraper_mg import extract_url_from_image, scrape_sefaz_mg, reload_db_aliases
 from services.ai_normalizer import AINormalizerService
 
@@ -11,22 +19,48 @@ from services.ai_normalizer import AINormalizerService
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="API IA Mercado Fácil - Motor Ocr")
+# ── Config via ambiente ────────────────────────────────────────────────────
+# Origens permitidas para CORS (separadas por vírgula). Sem "*" em produção.
+ALLOWED_ORIGINS = [
+    o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:8080").split(",") if o.strip()
+]
+# Tamanho máximo de upload (MB)
+MAX_UPLOAD_MB = float(os.getenv("MAX_UPLOAD_MB", "10"))
+MAX_UPLOAD_BYTES = int(MAX_UPLOAD_MB * 1024 * 1024)
+
 ai_service = AINormalizerService()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-@app.on_event("startup")
-async def on_startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Carrega aliases de supermercado do banco uma vez ao iniciar o servidor."""
     logger.info("🚀 Iniciando servidor — carregando aliases de supermercado do banco...")
     reload_db_aliases()
+    yield
+
+
+app = FastAPI(title="API IA Mercado Fácil - Motor Ocr", lifespan=lifespan)
+
+# ── Rate limiting ──────────────────────────────────────────────────────────
+def _rate_key(request: Request) -> str:
+    """Chaveia por usuário (Authorization) quando disponível; senão pelo IP."""
+    auth = request.headers.get("authorization")
+    if auth:
+        return hashlib.sha256(auth.encode()).hexdigest()
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=_rate_key)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 
 @app.get("/")
@@ -45,7 +79,11 @@ def compute_items_fingerprint(items: list[dict]) -> str:
 
 
 def process_scraped_items(db_client, raw_items: list[dict], ai: AINormalizerService) -> list[dict]:
-    """Intercepta os itens crus, varre o BD e passa os desconhecidos pelo Gemini antes de salvar."""
+    """Intercepta os itens crus, varre o BD e passa os desconhecidos pelo Gemini antes de salvar.
+
+    Usa o client Service Role (db_client) porque product_dictionary é uma tabela GLOBAL,
+    não pertencente a um usuário específico.
+    """
     if not db_client or not raw_items:
         return raw_items
 
@@ -95,21 +133,23 @@ def process_scraped_items(db_client, raw_items: list[dict], ai: AINormalizerServ
     return raw_items
 
 
-def check_duplicate(user_id: str, url_sefaz: str, mercado: str,
+def check_duplicate(client, user_id: str, url_sefaz: str, mercado: str,
                     purchase_date: str | None, items: list[dict]) -> dict | None:
     """Verifica se a nota já foi cadastrada pelo usuário.
+
+    Usa o client autenticado do usuário (RLS garante que só enxerga as próprias compras).
 
     Camadas de verificação:
       1. URL da NFC-e — identificador único e inequívoco da nota fiscal
       2. Supermercado + Data + Fingerprint dos itens — cobre casos de URL variável
     """
-    if not db:
+    if not client:
         return None
 
     try:
         # CAMADA 1: URL da NFC-e
         res = (
-            db.table("purchase_history")
+            client.table("purchase_history")
             .select("id, supermarket_name, purchase_date, total_amount")
             .eq("user_id", user_id)
             .eq("nfc_url", url_sefaz)
@@ -124,7 +164,7 @@ def check_duplicate(user_id: str, url_sefaz: str, mercado: str,
         # CAMADA 2: Supermercado + Data + Fingerprint
         if purchase_date and items:
             res2 = (
-                db.table("purchase_history")
+                client.table("purchase_history")
                 .select("id, supermarket_name, purchase_date, total_amount, purchase_items(product_name, quantity, unit_price)")
                 .eq("user_id", user_id)
                 .eq("supermarket_name", mercado)
@@ -146,21 +186,33 @@ def check_duplicate(user_id: str, url_sefaz: str, mercado: str,
 
 
 @app.post("/upload-cupom")
+@limiter.limit("20/minute")
 async def extract_receipt_data(
+    request: Request,
     file: UploadFile = File(...),
-    user_id: str = Form(None),
     force_save: str = Form("false"),  # "true" = salvar mesmo sendo duplicata
+    current_user: CurrentUser = Depends(get_current_user),
 ):
+    user_id = current_user.id
     force = force_save.lower() == "true"
     logger.info(f"📸 Arquivo: {file.filename} | user: {user_id} | force: {force}")
 
     # 1. Validação de tipo
-    if not file.content_type.startswith('image/'):
+    if not file.content_type or not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="Ei, mande a foto do cupom!")
 
-    # 2. Ler imagem
+    # 1b. Rejeição rápida por tamanho (header) antes de ler o corpo
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit() and int(content_length) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"Imagem muito grande (máx {MAX_UPLOAD_MB:.0f} MB).")
+
+    # 2. Ler imagem (com teto de segurança)
     img_bytes = await file.read()
     logger.info(f"💾 Tamanho: {len(img_bytes) / 1024 / 1024:.2f} MB")
+    if len(img_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"Imagem muito grande (máx {MAX_UPLOAD_MB:.0f} MB).")
+    if not img_bytes:
+        raise HTTPException(status_code=400, detail="Arquivo vazio.")
 
     # 3. Extrair URL do QR Code
     url_sefaz, layer_used = extract_url_from_image(img_bytes)
@@ -168,31 +220,29 @@ async def extract_receipt_data(
         raise HTTPException(status_code=400, detail="Não foi possível ler a nota. Considere a Leitura por uma IA")
     logger.info(f"🔗 URL: {url_sefaz}")
 
-    # 4. Scraping Sefaz
+    # 4. Scraping Sefaz (valida allowlist de domínio internamente — anti-SSRF)
     scraping_result = scrape_sefaz_mg(url_sefaz)
     if not scraping_result.get("success"):
-        raise HTTPException(status_code=500, detail=f"Falha ao ler dados na Nota: {scraping_result.get('error')}")
+        raise HTTPException(status_code=502, detail="Não foi possível ler os dados da nota na Sefaz.")
 
     mercado       = scraping_result.get("supermarket_name", "Desconhecido")
     total         = scraping_result.get("total_amount", 0.0)
     purchase_date = scraping_result.get("purchase_date")
     itens_raw     = scraping_result.get("items", [])
 
-    # Pipeline de Normalização (DB + Gemini AI)
+    # Pipeline de Normalização (DB global + Gemini AI) — usa Service Role só p/ dicionário
     itens = process_scraped_items(db, itens_raw, ai_service)
-    # Atualiza o dicionário inicial com os valores já traduzidos para o response
     scraping_result["items"] = itens
 
-    # 5. Banco de Dados
-    try:
-        if not db:
-            raise ValueError("Banco não iniciado. Faltam chaves no .env.")
-        if not user_id:
-            raise ValueError("user_id não recebido do frontend.")
+    # 5. Banco de Dados — escrita COMO o usuário (RLS ativa)
+    uc = user_client(current_user.access_token)
+    if not uc:
+        raise HTTPException(status_code=503, detail="Serviço de banco indisponível.")
 
+    try:
         # ── CHECK DE DUPLICATA ──────────────────────────────────────────────
         if not force:
-            dup = check_duplicate(user_id, url_sefaz, mercado, purchase_date, itens)
+            dup = check_duplicate(uc, user_id, url_sefaz, mercado, purchase_date, itens)
             if dup:
                 existing = dup["existing"]
                 reason   = "mesma URL da nota fiscal" if dup["layer"] == "url" else "mesmo mercado, data e itens"
@@ -225,7 +275,7 @@ async def extract_receipt_data(
             logger.warning("⚠️ Data não encontrada — banco usará data atual.")
 
         # Inserir compra
-        res = db.table("purchase_history").insert(purchase_payload).execute()
+        res = uc.table("purchase_history").insert(purchase_payload).execute()
         purchase_id = res.data[0].get('id')
         logger.info(f"✅ Compra #{purchase_id} registrada{' (forçada)' if force else ''}.")
 
@@ -233,12 +283,14 @@ async def extract_receipt_data(
         if itens:
             for item in itens:
                 item["purchase_id"] = purchase_id
-            db.table("purchase_items").insert(itens).execute()
+            uc.table("purchase_items").insert(itens).execute()
             logger.info(f"🛒 {len(itens)} itens inseridos.")
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Erro de Banco: {e}")
-        raise HTTPException(status_code=500, detail=f"Erro no BD: {str(e)}")
+        raise HTTPException(status_code=500, detail="Erro ao salvar a nota. Tente novamente.")
 
     return {
         "success":  True,

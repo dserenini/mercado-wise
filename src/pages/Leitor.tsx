@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function Leitor() {
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
+  const { user, session, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
   const [nfcUrl, setNfcUrl] = useState("");
@@ -64,14 +64,21 @@ export default function Leitor() {
   };
 
   const sendToBackend = async (file: File, forceSave = false) => {
+    if (!session?.access_token) {
+      throw new Error("Sessão expirada. Faça login novamente.");
+    }
+
     const formData = new FormData();
     formData.append("file", file);
-    if (user) formData.append("user_id", user.id);
     formData.append("force_save", forceSave ? "true" : "false");
 
     const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
     const response = await fetch(`${apiUrl}/upload-cupom`, {
       method: "POST",
+      headers: {
+        // O user_id NÃO é mais enviado — o backend o deriva deste token (JWT).
+        Authorization: `Bearer ${session.access_token}`,
+      },
       body: formData,
     });
 

@@ -6,3 +6,7 @@ Dockerfile
 mercadofacil-*.tar
 backend/venv
 backend/__pycache__
+
+# Segredos — nunca copiar para a imagem
+.env
+.env.*

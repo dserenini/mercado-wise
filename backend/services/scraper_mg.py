@@ -9,8 +9,39 @@ import cv2
 import os
 import numpy as np
 from datetime import datetime
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+# ── Anti-SSRF: só permitimos requisições HTTP para domínios oficiais da Sefaz ──
+# Configurável por ambiente (sufixos separados por vírgula).
+_ALLOWED_SEFAZ_DOMAINS = tuple(
+    d.strip().lower()
+    for d in os.getenv(
+        "ALLOWED_SEFAZ_DOMAINS", "fazenda.mg.gov.br,sefaz.mg.gov.br"
+    ).split(",")
+    if d.strip()
+)
+
+
+def is_allowed_sefaz_url(url: str) -> bool:
+    """True apenas se a URL for HTTPS e o host pertencer a um domínio oficial da Sefaz.
+
+    Como o QR Code pode conter qualquer URL, isso impede que o backend seja usado
+    para acessar hosts internos/privados (SSRF).
+    """
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = (parsed.hostname or "").lower()
+        if not host:
+            return False
+        return any(
+            host == dom or host.endswith("." + dom) for dom in _ALLOWED_SEFAZ_DOMAINS
+        )
+    except Exception:
+        return False
 
 # Aliases carregados do banco (populados em _load_db_aliases, chamado no startup da API)
 # Lista de dicts: [{"alias": str, "display_name": str}, ...] ordenada por priority
@@ -408,6 +439,11 @@ def extract_url_from_image(img_bytes: bytes) -> tuple:
 def scrape_sefaz_mg(url: str) -> dict:
     """Acessa a URL da Sefaz MG e retorna os dados relevantes."""
     try:
+        # Anti-SSRF: recusa qualquer URL fora dos domínios oficiais da Sefaz
+        if not is_allowed_sefaz_url(url):
+            logger.warning(f"🚫 URL bloqueada (fora da allowlist Sefaz): {url}")
+            return {"success": False, "error": "URL fora do domínio permitido da Sefaz."}
+
         # Extrair CNPJ base da URL do QR Code (feito antes do request HTTP)
         cnpj_base = extract_cnpj_base_from_url(url)
 
