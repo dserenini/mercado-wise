@@ -27,7 +27,9 @@ try:
         os.path.join(_model_dir, "sr.caffemodel"),
     )
 except Exception as e:  # pragma: no cover
-    logger.warning(f"Aviso: WeChatQRCode não pôde ser ativado ({e})")
+    # Degradação graciosa: pyzbar (Camada 1) é o leitor principal; o WeChatQRCode
+    # é só uma camada extra de resiliência para fotos muito degradadas.
+    logger.info(f"WeChatQRCode indisponível — seguindo só com pyzbar. Motivo: {e}")
 
 
 def _pil_variants(base_image: Image.Image) -> Iterator[tuple[str, Image.Image]]:
