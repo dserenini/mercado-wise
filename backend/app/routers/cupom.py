@@ -1,5 +1,6 @@
 """Endpoint de upload/leitura de cupom fiscal (NFC-e)."""
 import logging
+import re
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Request
 from fastapi.concurrency import run_in_threadpool
@@ -16,16 +17,43 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 ai_service = AINormalizerService()
 
+# Versão do parser da Sefaz — gravada em receipts_raw para reprocessamento seletivo
+PARSER_VERSION = 2
+
+
+def _upsert_supermarket(cnpj: str | None, name: str, address: str | None) -> str | None:
+    """Alimenta a tabela global `supermarkets` (via Service Role) e retorna o id."""
+    if not db or not cnpj:
+        return None
+    try:
+        city = None
+        if address:
+            m = re.search(r"-\s*([^,\-]+),\s*[A-Z]{2}\s*$", address)
+            if m:
+                city = m.group(1).strip().title()
+        payload = {"cnpj": cnpj, "name": name}
+        if address:
+            payload["address"] = address
+        if city:
+            payload["city"] = city
+        res = db.table("supermarkets").upsert(payload, on_conflict="cnpj").execute()
+        return res.data[0].get("id") if res.data else None
+    except Exception as e:
+        logger.warning(f"Não foi possível alimentar supermarkets ({cnpj}): {e}")
+        return None
+
 
 def _persist_purchase(access_token, user_id, force, url_sefaz, mercado, total,
-                      purchase_date, itens) -> dict:
+                      purchase_date, itens, access_key=None, cnpj=None,
+                      payment_method=None, supermarket_id=None, raw_html=None) -> dict:
     """Bloqueante (roda em threadpool): checa duplicata e grava sob RLS."""
     uc = user_client(access_token)
     if not uc:
         raise HTTPException(status_code=503, detail="Serviço de banco indisponível.")
 
     if not force:
-        dup = check_duplicate(uc, user_id, url_sefaz, mercado, purchase_date, itens)
+        dup = check_duplicate(uc, user_id, url_sefaz, mercado, purchase_date, itens,
+                              access_key=access_key)
         if dup:
             return {"outcome": "duplicate", "layer": dup["layer"], "existing": dup["existing"]}
 
@@ -34,7 +62,12 @@ def _persist_purchase(access_token, user_id, force, url_sefaz, mercado, total,
         "supermarket_name": mercado,
         "total_amount": total,
         "nfc_url": url_sefaz,
+        "access_key": access_key,
+        "cnpj": cnpj,
+        "payment_method": payment_method,
     }
+    if supermarket_id:
+        purchase_payload["supermarket_id"] = supermarket_id
     if purchase_date:
         purchase_payload["purchase_date"] = purchase_date
 
@@ -45,6 +78,22 @@ def _persist_purchase(access_token, user_id, force, url_sefaz, mercado, total,
         for item in itens:
             item["purchase_id"] = purchase_id
         uc.table("purchase_items").insert(itens).execute()
+
+    # HTML cru para reprocessamento futuro — falha aqui não invalida a compra
+    if access_key and raw_html:
+        try:
+            uc.table("receipts_raw").upsert(
+                {
+                    "user_id": user_id,
+                    "access_key": access_key,
+                    "nfc_url": url_sefaz,
+                    "raw_html": raw_html,
+                    "parser_version": PARSER_VERSION,
+                },
+                on_conflict="user_id,access_key",
+            ).execute()
+        except Exception as e:
+            logger.warning(f"receipts_raw não gravado (compra #{purchase_id}): {e}")
 
     return {"outcome": "saved", "purchase_id": purchase_id}
 
@@ -93,16 +142,26 @@ async def extract_receipt_data(
     total = scraping_result.get("total_amount", 0.0)
     purchase_date = scraping_result.get("purchase_date")
     itens_raw = scraping_result.get("items", [])
+    access_key = scraping_result.get("access_key")
+    cnpj = scraping_result.get("cnpj")
+    payment_method = scraping_result.get("payment_method")
+    market_address = scraping_result.get("market_address")
+    # O HTML cru não volta na resposta — só vai para receipts_raw
+    raw_html = scraping_result.pop("raw_html", None)
 
     # 5. Normalização (rede/BD global → threadpool)
     itens = await run_in_threadpool(process_scraped_items, db, itens_raw, ai_service)
     scraping_result["items"] = itens
+
+    # 5b. Catálogo global de mercados (Service Role, tabela global)
+    supermarket_id = await run_in_threadpool(_upsert_supermarket, cnpj, mercado, market_address)
 
     # 6. Persistência sob RLS (BD → threadpool)
     try:
         result = await run_in_threadpool(
             _persist_purchase, current_user.access_token, user_id, force,
             url_sefaz, mercado, total, purchase_date, itens,
+            access_key, cnpj, payment_method, supermarket_id, raw_html,
         )
     except HTTPException:
         raise
@@ -112,7 +171,10 @@ async def extract_receipt_data(
 
     if result["outcome"] == "duplicate":
         existing = result["existing"]
-        reason = "mesma URL da nota fiscal" if result["layer"] == "url" else "mesmo mercado, data e itens"
+        reason = {
+            "access_key": "mesma chave de acesso da nota fiscal",
+            "url": "mesma URL da nota fiscal",
+        }.get(result["layer"], "mesmo mercado, data e itens")
         logger.info(f"🚫 Duplicata bloqueada ({reason}). Aguardando confirmação.")
         return {
             "success": False,

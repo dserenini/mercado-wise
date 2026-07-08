@@ -28,6 +28,21 @@ def reload_db_aliases() -> None:
         _DB_ALIASES = []
 
 
+def extract_access_key_from_url(url: str) -> str | None:
+    """Extrai a chave de acesso (44 dígitos) do parâmetro `p=` da URL do QR Code NFC-e."""
+    try:
+        m = re.search(r"[?&]p=([^|&]+)", url)
+        if not m:
+            return None
+        chave = re.sub(r"[^0-9]", "", m.group(1))
+        if len(chave) != 44:
+            return None
+        return chave
+    except Exception as e:
+        logger.warning(f"Não foi possível extrair a chave de acesso da URL: {e}")
+        return None
+
+
 def extract_cnpj_base_from_url(url: str) -> str | None:
     """Extrai os primeiros 8 dígitos do CNPJ a partir da URL do QR Code NFC-e."""
     try:
@@ -173,6 +188,61 @@ def parse_brl_to_float(val_str: str) -> float:
         return 0.0
 
 
+# "Código" pode chegar com mojibake (CÃ³digo/C�digo) dependendo do charset do portal
+_CPROD_RE = re.compile(r"\(C.{0,3}?digo:?\s*(\d+)\s*\)", re.IGNORECASE)
+_UNIT_RE = re.compile(r"UN:\s*([A-Za-z]{1,6})")
+
+
+def _extract_cprod(text: str) -> str | None:
+    """Extrai o código interno do produto de um trecho como '(Código: 42858)'."""
+    m = _CPROD_RE.search(text)
+    return m.group(1) if m else None
+
+
+def _extract_emitente(soup, body_text: str) -> tuple[str | None, str | None]:
+    """Extrai (cnpj completo, endereço) do bloco do emitente."""
+    cnpj = None
+    m = re.search(r"CNPJ:\s*([\d./-]{11,20})", body_text)
+    if m:
+        digits = re.sub(r"[^0-9]", "", m.group(1))
+        if len(digits) == 14:
+            cnpj = digits
+
+    address = None
+    try:
+        cnpj_el = soup.find(string=re.compile(r"CNPJ:\s*[\d.]"))
+        if cnpj_el:
+            tr = cnpj_el.find_parent("tr")
+            nxt = tr.find_next_sibling("tr") if tr else None
+            if nxt:
+                candidate = nxt.get_text(" ", strip=True)
+                # Endereço plausível: tem vírgula e não é outro rótulo do layout
+                if candidate and "," in candidate and "CNPJ" not in candidate:
+                    address = candidate
+    except Exception as e:
+        logger.debug(f"Endereço do emitente não extraído: {e}")
+    return cnpj, address
+
+
+def _extract_payment_method(body_text: str) -> str | None:
+    """Extrai a forma de pagamento (ex.: '04 - Cartão de Débito')."""
+    m = re.search(
+        r"Forma de Pagamento\s+(\d{2}\s*-\s*[^\d]{2,50}?)"
+        r"(?=\s+(?:Consumidor|Chave|Informa|Valor|Troco|Qtde|\d)|$)",
+        body_text,
+    )
+    return m.group(1).strip() if m else None
+
+
+def _extract_access_key_from_page(body_text: str) -> str | None:
+    """Extrai a chave de acesso exibida na página (formatada com pontuação)."""
+    m = re.search(r"[Cc]have de acesso\s+([\d.\-/ ]{44,80})", body_text)
+    if not m:
+        return None
+    digits = re.sub(r"[^0-9]", "", m.group(1))
+    return digits[:44] if len(digits) >= 44 else None
+
+
 def _parse_sefaz_html(html: str, url: str, cnpj_base: str | None) -> ScrapeResult:
     """Faz o parsing do HTML da Sefaz MG (separado para ser testável sem rede)."""
     soup = BeautifulSoup(html, "html.parser")
@@ -219,9 +289,16 @@ def _parse_sefaz_html(html: str, url: str, cnpj_base: str | None) -> ScrapeResul
             span_total = linha.find("span", class_="valor")
             total_item = parse_brl_to_float(span_total.get_text()) if span_total else 0.0
 
+            linha_text = linha.get_text(" ", strip=True)
+            unit = None
+            m_un = _UNIT_RE.search(linha_text)
+            if m_un:
+                unit = m_un.group(1)
+
             items_comprados.append({
-                "product_name": nome, "quantity": qtd_val,
-                "unit_price": preco_un, "total_price": total_item,
+                "product_name": nome, "raw_name": nome,
+                "cprod": _extract_cprod(linha_text), "unit": unit,
+                "quantity": qtd_val, "unit_price": preco_un, "total_price": total_item,
             })
 
     body_text = soup.body.get_text(separator=" ", strip=True) if soup.body else ""
@@ -263,6 +340,11 @@ def _parse_sefaz_html(html: str, url: str, cnpj_base: str | None) -> ScrapeResul
             if m_qtd:
                 qtd_val = parse_brl_to_float(m_qtd.group(1))
 
+            unit = None
+            m_un = _UNIT_RE.search(tds[2].get_text())
+            if m_un:
+                unit = m_un.group(1)
+
             total_item = 0.0
             m_tot = re.search(r"R\$\s*([\d\.,]+)", tds[3].get_text())
             if m_tot:
@@ -270,8 +352,9 @@ def _parse_sefaz_html(html: str, url: str, cnpj_base: str | None) -> ScrapeResul
 
             preco_un = total_item / qtd_val if qtd_val > 0 else total_item
             items_comprados.append({
-                "product_name": nome, "quantity": qtd_val,
-                "unit_price": preco_un, "total_price": total_item,
+                "product_name": nome, "raw_name": nome,
+                "cprod": _extract_cprod(tds[0].get_text(" ", strip=True)), "unit": unit,
+                "quantity": qtd_val, "unit_price": preco_un, "total_price": total_item,
             })
 
     if market_name == "Mercado Desconhecido" and "S/A" in body_text:
@@ -279,12 +362,21 @@ def _parse_sefaz_html(html: str, url: str, cnpj_base: str | None) -> ScrapeResul
 
     logger.info(f"🏪 Nome do mercado: '{raw_market_name}' → '{market_name}'")
 
+    access_key = extract_access_key_from_url(url) or _extract_access_key_from_page(body_text)
+    cnpj, market_address = _extract_emitente(soup, body_text)
+    payment_method = _extract_payment_method(body_text)
+
     return {
         "success": True,
         "supermarket_name": market_name,
+        "raw_market_name": raw_market_name,
         "total_amount": total_amount,
         "purchase_date": purchase_date,
         "url": url,
+        "access_key": access_key,
+        "cnpj": cnpj,
+        "market_address": market_address,
+        "payment_method": payment_method,
         "items": items_comprados,
     }
 
@@ -326,7 +418,10 @@ class MGSefazScraper:
                 logger.warning(f"Tentativa {attempt}/{attempts} falhou ao acessar a Sefaz: {e}")
                 continue
             try:
-                return _parse_sefaz_html(response.text, url, cnpj_base)
+                result = _parse_sefaz_html(response.text, url, cnpj_base)
+                # HTML cru vai junto para persistência em receipts_raw (reprocessamento futuro)
+                result["raw_html"] = response.text
+                return result
             except Exception as e:
                 logger.error(f"Erro ao parsear HTML da Sefaz MG: {e}")
                 return {"success": False, "error": f"parse: {e}"}

@@ -57,6 +57,7 @@ def process_scraped_items(db_client, raw_items: list[dict], ai: AINormalizerServ
 
         for item in raw_items:
             raw_name = item["product_name"]
+            item.setdefault("raw_name", raw_name)
             if raw_name in known_map:
                 item["product_name"] = known_map[raw_name]["normalized_name"]
             elif raw_name in ai_map:
@@ -69,15 +70,30 @@ def process_scraped_items(db_client, raw_items: list[dict], ai: AINormalizerServ
 
 
 def check_duplicate(client, user_id: str, url_sefaz: str, mercado: str,
-                    purchase_date: str | None, items: list[dict]) -> dict | None:
+                    purchase_date: str | None, items: list[dict],
+                    access_key: str | None = None) -> dict | None:
     """Detecta nota já cadastrada pelo usuário (usa o client autenticado — RLS ativa).
 
-    Camadas: (1) URL da NFC-e; (2) mercado + data + fingerprint dos itens.
+    Camadas: (1) chave de acesso da NFC-e; (2) URL; (3) mercado + data + fingerprint dos itens.
     """
     if not client:
         return None
 
     try:
+        if access_key:
+            res = (
+                client.table("purchase_history")
+                .select("id, supermarket_name, purchase_date, total_amount")
+                .eq("user_id", user_id)
+                .eq("access_key", access_key)
+                .limit(1)
+                .execute()
+            )
+            if res.data:
+                existing = res.data[0]
+                logger.warning(f"⚠️ Duplicata por chave de acesso: compra #{existing['id']}")
+                return {"layer": "access_key", "existing": existing}
+
         res = (
             client.table("purchase_history")
             .select("id, supermarket_name, purchase_date, total_amount")

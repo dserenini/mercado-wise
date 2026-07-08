@@ -4,6 +4,9 @@ from typing import Protocol, TypedDict, runtime_checkable
 
 class ScrapedItem(TypedDict, total=False):
     product_name: str
+    raw_name: str
+    cprod: str | None
+    unit: str | None
     quantity: float
     unit_price: float
     total_price: float
@@ -12,10 +15,16 @@ class ScrapedItem(TypedDict, total=False):
 class ScrapeResult(TypedDict, total=False):
     success: bool
     supermarket_name: str
+    raw_market_name: str
     total_amount: float
     purchase_date: str | None
     url: str
+    access_key: str | None
+    cnpj: str | None
+    market_address: str | None
+    payment_method: str | None
     items: list[ScrapedItem]
+    raw_html: str
     error: str
 
 
