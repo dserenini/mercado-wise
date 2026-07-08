@@ -9,6 +9,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { PriceComparison } from "@/components/PriceComparison";
+import { ProductMarketComparison } from "@/components/ProductMarketComparison";
+import { MarketRanking } from "@/components/MarketRanking";
+import { formatCurrency } from "@/lib/analytics";
 
 interface PriceData {
   date: string;
@@ -226,13 +229,6 @@ export default function Insights() {
     return Array.from(years).sort((a, b) => b.localeCompare(a));
   };
 
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(value);
-  };
 
   if (loading) {
     return (
@@ -485,7 +481,13 @@ export default function Insights() {
               </Card>
             )}
 
-            {/* 6. Price Comparison */}
+            {/* 6. Melhor mercado pro seu cesto (3.3) */}
+            <MarketRanking items={allsItems} />
+
+            {/* 7. Mesmo produto entre mercados (3.1) */}
+            <ProductMarketComparison items={allsItems} />
+
+            {/* 8. Price Comparison (embalagens) */}
             <PriceComparison items={allsItems} />
 
           </div>

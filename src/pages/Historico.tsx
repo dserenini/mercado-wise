@@ -4,12 +4,15 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import {
   usePurchases,
+  usePurchasesWithItems,
   usePurchaseItems,
   useDeletePurchase,
   useSaveManualPurchase,
   type Purchase,
   type PurchaseItem,
 } from "@/hooks/queries/usePurchases";
+import { PriceThermometer } from "@/components/PriceThermometer";
+import { computeBenchmarks, formatCurrency, type AnalyticsItem, type Benchmark } from "@/lib/analytics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,10 +38,14 @@ interface ManualItem {
 
 function PurchaseItemsExpanded({
   purchaseId,
-  formatCurrency,
+  purchaseDate,
+  supermarketName,
+  benchmarks,
 }: {
   purchaseId: string;
-  formatCurrency: (v: number) => string;
+  purchaseDate: string;
+  supermarketName: string | null;
+  benchmarks: Map<string, Benchmark>;
 }) {
   const { data: items = [], isLoading } = usePurchaseItems(purchaseId, true);
 
@@ -50,30 +57,42 @@ function PurchaseItemsExpanded({
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           </div>
         ) : (
-          items.map((item) => (
-            <div
-              key={item.id}
-              className="flex items-center justify-between p-3 bg-muted/50 rounded-xl"
-            >
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{item.product_name}</span>
-                  {item.is_promotion && (
-                    <Badge variant="secondary" className="bg-accent/20 text-accent text-xs">
-                      <Tag className="h-3 w-3 mr-1" />
-                      Promo
-                    </Badge>
-                  )}
+          items.map((item) => {
+            const analyticsItem: AnalyticsItem = {
+              product_name: item.product_name,
+              unit_price: item.unit_price,
+              quantity: item.quantity,
+              package_size: item.package_size,
+              package_unit: item.package_unit,
+              purchase_date: purchaseDate,
+              supermarket_name: supermarketName,
+            };
+            return (
+              <div
+                key={item.id}
+                className="flex items-center justify-between p-3 bg-muted/50 rounded-xl"
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-sm">{item.product_name}</span>
+                    {item.is_promotion && (
+                      <Badge variant="secondary" className="bg-accent/20 text-accent text-xs">
+                        <Tag className="h-3 w-3 mr-1" />
+                        Promo
+                      </Badge>
+                    )}
+                    <PriceThermometer item={analyticsItem} benchmarks={benchmarks} />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {item.quantity}x {formatCurrency(item.unit_price)}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {item.quantity}x {formatCurrency(item.unit_price)}
-                </p>
+                <span className="font-semibold">
+                  {formatCurrency(item.total_price || item.unit_price * item.quantity)}
+                </span>
               </div>
-              <span className="font-semibold">
-                {formatCurrency(item.total_price || item.unit_price * item.quantity)}
-              </span>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </CardContent>
@@ -85,8 +104,28 @@ export default function Historico() {
   const { toast } = useToast();
 
   const { data: purchases = [], isLoading: loading, error } = usePurchases();
+  const { data: purchasesWithItems = [] } = usePurchasesWithItems();
   const deletePurchase = useDeletePurchase();
   const saveManual = useSaveManualPurchase();
+
+  // Média móvel por conceito (termômetro de preço nos itens) — 3.2
+  const benchmarks = useMemo(() => {
+    const items: AnalyticsItem[] = [];
+    purchasesWithItems.forEach((p) => {
+      (p.purchase_items ?? []).forEach((it) => {
+        items.push({
+          product_name: it.product_name,
+          unit_price: it.unit_price,
+          quantity: it.quantity || 1,
+          package_size: it.package_size,
+          package_unit: it.package_unit,
+          purchase_date: p.purchase_date,
+          supermarket_name: p.supermarket_name,
+        });
+      });
+    });
+    return computeBenchmarks(items);
+  }, [purchasesWithItems]);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -346,13 +385,6 @@ export default function Historico() {
           }),
       }
     );
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(value);
   };
 
   const formatDate = (date: string) => {
@@ -696,7 +728,12 @@ export default function Historico() {
                 </CardHeader>
 
                 {expandedId === purchase.id && (
-                  <PurchaseItemsExpanded purchaseId={purchase.id} formatCurrency={formatCurrency} />
+                  <PurchaseItemsExpanded
+                    purchaseId={purchase.id}
+                    purchaseDate={purchase.purchase_date}
+                    supermarketName={purchase.supermarket_name}
+                    benchmarks={benchmarks}
+                  />
                 )}
               </Card>
             ))}
