@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Scale, TrendingDown, Package, ArrowRight, Check } from "lucide-react";
+import { formatCurrency, pricePerBaseUnit } from "@/lib/analytics";
 
 interface PurchaseItemWithDetails {
   id: string;
@@ -32,15 +33,6 @@ interface ComparisonItem {
   displayUnit: string;
 }
 
-// Common unit conversions for normalization
-const unitConversions: Record<string, { base: string; factor: number }> = {
-  ml: { base: "L", factor: 0.001 },
-  l: { base: "L", factor: 1 },
-  g: { base: "kg", factor: 0.001 },
-  kg: { base: "kg", factor: 1 },
-  un: { base: "un", factor: 1 },
-};
-
 // Normalize a name for grouping (remove numbers, sizes, etc.)
 const normalizeProductName = (name: string): string => {
   return name
@@ -51,26 +43,14 @@ const normalizeProductName = (name: string): string => {
     .trim();
 };
 
-// Calculate price per base unit
+// Preço por unidade base (delega ao util compartilhado de analytics)
 const calculatePricePerUnit = (
   price: number,
   size: number | null,
   unit: string | null
 ): { pricePerUnit: number; displayUnit: string } | null => {
-  if (!size || size <= 0) return null;
-
-  const normalizedUnit = (unit || "un").toLowerCase();
-  const conversion = unitConversions[normalizedUnit];
-
-  if (!conversion) {
-    return { pricePerUnit: price / size, displayUnit: unit || "un" };
-  }
-
-  const sizeInBaseUnit = size * conversion.factor;
-  return {
-    pricePerUnit: price / sizeInBaseUnit,
-    displayUnit: conversion.base,
-  };
+  const p = pricePerBaseUnit(price, size, unit);
+  return p ? { pricePerUnit: p.value, displayUnit: p.unit } : null;
 };
 
 export function PriceComparison({ items }: PriceComparisonProps) {
@@ -151,9 +131,6 @@ export function PriceComparison({ items }: PriceComparisonProps) {
       prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]
     );
   };
-
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
   const itemsWithPackageInfo = items.filter((i) => i.package_size && i.package_size > 0);
 

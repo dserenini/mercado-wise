@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { usePurchasesWithItems } from "@/hooks/queries/usePurchases";
+import { usePriceObservations } from "@/hooks/queries/usePriceObservations";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, TrendingUp, TrendingDown, Store, ShoppingBag, BarChart3 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -9,6 +10,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { PriceComparison } from "@/components/PriceComparison";
+import { ProductMarketComparison } from "@/components/ProductMarketComparison";
+import { MarketRanking } from "@/components/MarketRanking";
+import { formatCurrency } from "@/lib/analytics";
 
 interface PriceData {
   date: string;
@@ -45,6 +49,7 @@ export default function Insights() {
   const { toast } = useToast();
 
   const { data: purchases = [], isLoading: loading, error } = usePurchasesWithItems();
+  const { data: observations = [] } = usePriceObservations();
 
   const [timeFilter, setTimeFilter] = useState("3M"); // 1M, 3M, 6M, 1Yr, YTD, All
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
@@ -87,8 +92,21 @@ export default function Insights() {
         });
       });
     });
+    observations.forEach((o) => {
+      items.push({
+        id: o.id,
+        product_name: o.product_name,
+        unit_price: o.price,
+        quantity: 1,
+        total_price: o.price,
+        package_size: o.package_size,
+        package_unit: o.package_unit,
+        purchase_date: o.observed_at,
+        supermarket_name: o.supermarket_name,
+      });
+    });
     return items;
-  }, [purchases]);
+  }, [purchases, observations]);
 
   // Recalcula métricas derivadas quando compras ou filtros mudam
   useEffect(() => {
@@ -226,13 +244,6 @@ export default function Insights() {
     return Array.from(years).sort((a, b) => b.localeCompare(a));
   };
 
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(value);
-  };
 
   if (loading) {
     return (
@@ -485,7 +496,13 @@ export default function Insights() {
               </Card>
             )}
 
-            {/* 6. Price Comparison */}
+            {/* 6. Melhor mercado pro seu cesto (3.3) */}
+            <MarketRanking items={allsItems} />
+
+            {/* 7. Mesmo produto entre mercados (3.1) */}
+            <ProductMarketComparison items={allsItems} />
+
+            {/* 8. Price Comparison (embalagens) */}
             <PriceComparison items={allsItems} />
 
           </div>

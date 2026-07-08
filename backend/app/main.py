@@ -9,7 +9,7 @@ from slowapi import _rate_limit_exceeded_handler
 
 from app.config import settings
 from app.limiter import limiter
-from app.routers import cupom
+from app.routers import cupom, produto
 from app.services.scrapers import reload_db_aliases
 
 logging.basicConfig(level=logging.INFO)
@@ -37,6 +37,7 @@ app.add_middleware(
 )
 
 app.include_router(cupom.router)
+app.include_router(produto.router)
 
 
 @app.get("/")

@@ -1,14 +1,26 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useList, useListItems, type ListItem } from "@/hooks/queries/useListItems";
+import { usePurchasesWithItems } from "@/hooks/queries/usePurchases";
+import { usePriceObservations } from "@/hooks/queries/usePriceObservations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { ArrowLeft, Plus, Check, Trash2, Loader2, Circle, GripVertical, MoreVertical, Minus } from "lucide-react";
+import { ArrowLeft, Plus, Check, Trash2, Loader2, Circle, GripVertical, MoreVertical, Minus, Store, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import {
+  computeUnitPriceStats,
+  estimateBasket,
+  simulateBasketByMarket,
+  computeRepurchaseSuggestions,
+  conceptKey,
+  formatCurrency,
+  type AnalyticsItem,
+} from "@/lib/analytics";
 
 import {
   DndContext,
@@ -30,12 +42,13 @@ import { CSS } from '@dnd-kit/utilities';
 
 interface SortableItemProps {
   item: ListItem;
+  estimate: number | null;
   toggleItemCheck: (item: ListItem) => void;
   deleteItem: (id: string) => void;
   updateQuantity: (id: string, delta: number) => void;
 }
 
-function SortableItem({ item, toggleItemCheck, deleteItem, updateQuantity }: SortableItemProps) {
+function SortableItem({ item, estimate, toggleItemCheck, deleteItem, updateQuantity }: SortableItemProps) {
   const {
     attributes,
     listeners,
@@ -72,9 +85,16 @@ function SortableItem({ item, toggleItemCheck, deleteItem, updateQuantity }: Sor
             <div className={`p-1 rounded-full shrink-0 transition-colors ${item.is_checked ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
               {item.is_checked ? <Check className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
             </div>
-            <span className={`text-base font-medium truncate transition-all ${item.is_checked ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-              {item.product_name}
-            </span>
+            <div className="min-w-0">
+              <span className={`block text-base font-medium truncate transition-all ${item.is_checked ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                {item.product_name}
+              </span>
+              {estimate != null && (
+                <span className="block text-xs text-muted-foreground">
+                  ≈ {formatCurrency(estimate)}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Quantity Controls */}
@@ -120,10 +140,65 @@ export default function ListaDetalhes() {
 
   const { data: listData, error: listError } = useList(id);
   const { data: itemsData, isLoading: loading, error: itemsError, refetch } = useListItems(id);
+  const { data: purchases = [] } = usePurchasesWithItems();
+  const { data: observations = [] } = usePriceObservations();
 
   const [items, setItems] = useState<ListItem[]>([]);
   const [newItemName, setNewItemName] = useState("");
   const [addingItem, setAddingItem] = useState(false);
+
+  // Itens de compra (para ciclo de recompra) e itens+observações (para preços)
+  const purchaseItems = useMemo<AnalyticsItem[]>(() => {
+    const out: AnalyticsItem[] = [];
+    purchases.forEach((p) => {
+      (p.purchase_items ?? []).forEach((it) => {
+        out.push({
+          product_name: it.product_name,
+          unit_price: it.unit_price,
+          quantity: it.quantity || 1,
+          package_size: it.package_size,
+          package_unit: it.package_unit,
+          purchase_date: p.purchase_date,
+          supermarket_name: p.supermarket_name,
+        });
+      });
+    });
+    return out;
+  }, [purchases]);
+
+  const unitStats = useMemo(() => {
+    const withObs = [...purchaseItems];
+    observations.forEach((o) => {
+      withObs.push({
+        product_name: o.product_name,
+        unit_price: o.price,
+        quantity: 1,
+        package_size: o.package_size,
+        package_unit: o.package_unit,
+        purchase_date: o.observed_at,
+        supermarket_name: o.supermarket_name,
+      });
+    });
+    return computeUnitPriceStats(withObs);
+  }, [purchaseItems, observations]);
+
+  const basket = useMemo(() => estimateBasket(items, unitStats), [items, unitStats]);
+  const estimateById = useMemo(() => {
+    const m = new Map<string, number | null>();
+    basket.lines.forEach((l) => m.set(l.id, l.estimate));
+    return m;
+  }, [basket]);
+  const marketSims = useMemo(
+    () => simulateBasketByMarket(items, unitStats),
+    [items, unitStats],
+  );
+
+  const suggestions = useMemo(() => {
+    const present = new Set(items.map((i) => conceptKey(i.product_name)));
+    return computeRepurchaseSuggestions(purchaseItems)
+      .filter((s) => !present.has(s.concept))
+      .slice(0, 4);
+  }, [purchaseItems, items]);
 
   // DnD sensors
   const sensors = useSensors(
@@ -155,10 +230,11 @@ export default function ListaDetalhes() {
     }
   }, [listError, itemsError, toast, navigate]);
 
-  const addItem = async () => {
-    if (!newItemName.trim() || !id) return;
+  const addItemByName = async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed || !id) return;
     setAddingItem(true);
-    
+
     // Assign position to the bottom of the list
     const newPosition = items.length > 0 ? (items[items.length - 1].position || 0) + 1 : 0;
 
@@ -167,7 +243,7 @@ export default function ListaDetalhes() {
         .from("list_items")
         .insert({
           list_id: id,
-          product_name: newItemName.trim(),
+          product_name: trimmed,
           is_checked: false,
           quantity: 1,
           position: newPosition
@@ -176,8 +252,8 @@ export default function ListaDetalhes() {
         .single();
 
       if (error) throw error;
-      
-      setItems([...items, data as ListItem]);
+
+      setItems((prev) => [...prev, data as ListItem]);
       setNewItemName("");
     } catch (error) {
       toast({
@@ -189,6 +265,8 @@ export default function ListaDetalhes() {
       setAddingItem(false);
     }
   };
+
+  const addItem = () => addItemByName(newItemName);
 
   const toggleItemCheck = async (item: ListItem) => {
     const newCheckedState = !item.is_checked;
@@ -397,6 +475,31 @@ export default function ListaDetalhes() {
           </Button>
         </div>
 
+        {/* 5.3 — Sugestões de recompra ("provavelmente acabando") */}
+        {suggestions.length > 0 && (
+          <div className="mb-6">
+            <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+              <RotateCcw className="h-3 w-3" />
+              Provavelmente acabando
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {suggestions.map((s) => (
+                <Button
+                  key={s.concept}
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full h-8 gap-1"
+                  disabled={addingItem}
+                  onClick={() => addItemByName(s.displayName)}
+                >
+                  <Plus className="h-3 w-3" />
+                  {s.displayName}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <DndContext 
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -411,6 +514,7 @@ export default function ListaDetalhes() {
                 <SortableItem
                   key={item.id}
                   item={item}
+                  estimate={estimateById.get(item.id) ?? null}
                   toggleItemCheck={toggleItemCheck}
                   deleteItem={deleteItem}
                   updateQuantity={updateQuantity}
@@ -426,6 +530,64 @@ export default function ListaDetalhes() {
             )}
           </div>
         </DndContext>
+
+        {/* 5.1 — Total estimado da lista */}
+        {items.length > 0 && basket.matchedCount > 0 && (
+          <Card className="card-elevated mb-4">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Total estimado</p>
+                <p className="text-xs text-muted-foreground">
+                  {basket.matchedCount} de {basket.totalItems} itens com histórico de preço
+                </p>
+              </div>
+              <span className="font-display font-bold text-xl text-primary">
+                {formatCurrency(basket.total)}
+              </span>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 5.2 — Simulação por mercado */}
+        {marketSims.length > 0 && (
+          <Card className="card-elevated mb-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Store className="h-5 w-5 text-primary" />
+                Quanto custaria em cada mercado
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Estimativa pelos últimos preços que você viu em cada mercado
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {marketSims.map((sim, index) => (
+                <div
+                  key={sim.market}
+                  className={`flex items-center justify-between p-3 rounded-xl ${
+                    index === 0 ? "bg-primary/10 border-2 border-primary/30" : "bg-muted/50"
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm truncate">{sim.market}</span>
+                      {index === 0 && (
+                        <Badge className="bg-primary/20 text-primary text-xs shrink-0">Mais barato</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {Math.round(sim.coverage * 100)}% da lista
+                      {sim.oldestDate && ` · preços desde ${new Date(sim.oldestDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}`}
+                    </p>
+                  </div>
+                  <span className={`font-bold shrink-0 ${index === 0 ? "text-primary" : ""}`}>
+                    {formatCurrency(sim.total)}
+                  </span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </AppLayout>
   );
