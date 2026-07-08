@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     max_upload_mb: float = Field(
         default=10.0, validation_alias=AliasChoices("MAX_UPLOAD_MB")
     )
+    # Timeout de LEITURA (segundos) ao acessar o portal da Sefaz — portais NFC-e
+    # do governo são lentos e oscilam, então o default é folgado.
+    scraper_timeout: float = Field(
+        default=30.0, validation_alias=AliasChoices("SCRAPER_TIMEOUT")
+    )
 
     @property
     def origins_list(self) -> list[str]:

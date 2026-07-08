@@ -307,15 +307,29 @@ class MGSefazScraper:
             return False
 
     def scrape(self, url: str) -> ScrapeResult:
-        try:
-            cnpj_base = extract_cnpj_base_from_url(url)
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-            }
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            return _parse_sefaz_html(response.text, url, cnpj_base)
-        except Exception as e:
-            logger.error(f"Erro ao extrair HTML Sefaz MG: {e}")
-            return {"success": False, "error": str(e)}
+        cnpj_base = extract_cnpj_base_from_url(url)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        # O portal da Sefaz oscila — tenta 2x com timeout de leitura folgado.
+        attempts = 2
+        last_err: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                response = requests.get(
+                    url, headers=headers, timeout=(5, settings.scraper_timeout)
+                )
+                response.raise_for_status()
+            except requests.exceptions.RequestException as e:
+                last_err = e
+                logger.warning(f"Tentativa {attempt}/{attempts} falhou ao acessar a Sefaz: {e}")
+                continue
+            try:
+                return _parse_sefaz_html(response.text, url, cnpj_base)
+            except Exception as e:
+                logger.error(f"Erro ao parsear HTML da Sefaz MG: {e}")
+                return {"success": False, "error": f"parse: {e}"}
+
+        logger.error(f"Erro ao acessar a Sefaz MG após {attempts} tentativas: {last_err}")
+        return {"success": False, "error": str(last_err)}
