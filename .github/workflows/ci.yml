@@ -15,10 +15,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      # Lint é advisory por enquanto: há dívida pré-existente (uso de `any`,
-      # require no tailwind.config). Não bloqueia o CI até essa limpeza ser feita.
       - run: npm run lint
-        continue-on-error: true
       - run: npm run typecheck
       - run: npm run build
 

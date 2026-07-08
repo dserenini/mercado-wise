@@ -1,8 +1,6 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { usePurchasesWithItems } from "@/hooks/queries/usePurchases";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, TrendingUp, TrendingDown, Store, ShoppingBag, BarChart3 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -44,15 +42,10 @@ interface PurchaseItemWithDetails {
 }
 
 export default function Insights() {
-  const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
-  const [loading, setLoading] = useState(true);
-  const [purchases, setPurchases] = useState<any[]>([]);
-  const [allsItems, setAllItems] = useState<PurchaseItemWithDetails[]>([]);
+  const { data: purchases = [], isLoading: loading, error } = usePurchasesWithItems();
 
-  // New States
   const [timeFilter, setTimeFilter] = useState("3M"); // 1M, 3M, 6M, 1Yr, YTD, All
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
 
@@ -63,17 +56,41 @@ export default function Insights() {
 
   // Chart & List Data
   const [filteredPriceHistory, setFilteredPriceHistory] = useState<PriceData[]>([]);
-  const [filteredStoreHistory, setFilteredStoreHistory] = useState<{ name: string, total: number }[]>([]);
-
+  const [filteredStoreHistory, setFilteredStoreHistory] = useState<{ name: string; total: number }[]>([]);
   const [productStats, setProductStats] = useState<ProductStats[]>([]);
 
   useEffect(() => {
-    if (user) {
-      fetchData();
+    if (error) {
+      toast({
+        title: "Erro ao carregar insights",
+        description: (error as Error).message,
+        variant: "destructive",
+      });
     }
-  }, [user]);
+  }, [error, toast]);
 
-  // Recalculate derived data whenever purchases or filters change
+  // Itens achatados para o PriceComparison
+  const allsItems = useMemo<PurchaseItemWithDetails[]>(() => {
+    const items: PurchaseItemWithDetails[] = [];
+    purchases.forEach((p) => {
+      (p.purchase_items ?? []).forEach((item) => {
+        items.push({
+          id: item.id,
+          product_name: item.product_name,
+          unit_price: item.unit_price,
+          quantity: item.quantity || 1,
+          total_price: item.total_price || item.unit_price * (item.quantity || 1),
+          package_size: item.package_size,
+          package_unit: item.package_unit,
+          purchase_date: p.purchase_date,
+          supermarket_name: p.supermarket_name,
+        });
+      });
+    });
+    return items;
+  }, [purchases]);
+
+  // Recalcula métricas derivadas quando compras ou filtros mudam
   useEffect(() => {
     if (purchases.length > 0) {
       calculateMonthlyMetrics();
@@ -81,51 +98,8 @@ export default function Insights() {
       calculateFilteredData();
       calculateProductStats();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [purchases, timeFilter, selectedYear]);
-
-  const fetchData = async () => {
-    try {
-      const { data: purchasesData, error } = await supabase
-        .from("purchase_history")
-        .select("*, purchase_items(*)")
-        .order("purchase_date", { ascending: true }); // Ascending for charts
-
-      if (error) throw error;
-
-      if (purchasesData) {
-        setPurchases(purchasesData);
-
-        // Flatten items for PriceComparison
-        const items: PurchaseItemWithDetails[] = [];
-        purchasesData.forEach(p => {
-          if (p.purchase_items) {
-            (p.purchase_items as any[]).forEach((item: any) => {
-              items.push({
-                id: item.id,
-                product_name: item.product_name,
-                unit_price: item.unit_price,
-                quantity: item.quantity || 1,
-                total_price: item.total_price || item.unit_price * (item.quantity || 1),
-                package_size: item.package_size,
-                package_unit: item.package_unit,
-                purchase_date: p.purchase_date,
-                supermarket_name: p.supermarket_name,
-              })
-            })
-          }
-        });
-        setAllItems(items);
-      }
-    } catch (error: any) {
-      toast({
-        title: "Erro ao carregar insights",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const calculateMonthlyMetrics = () => {
     const now = new Date();
@@ -222,7 +196,7 @@ export default function Insights() {
 
     purchases.forEach((p) => {
       if (p.purchase_items) {
-        (p.purchase_items as any[]).forEach((item) => {
+        p.purchase_items.forEach((item) => {
           const current = products.get(item.product_name) || { prices: [], count: 0 };
           current.prices.push(item.unit_price);
           current.count += 1;
@@ -260,7 +234,7 @@ export default function Insights() {
     }).format(value);
   };
 
-  if (authLoading || loading) {
+  if (loading) {
     return (
       <AppLayout>
         <div className="flex items-center justify-center h-64">

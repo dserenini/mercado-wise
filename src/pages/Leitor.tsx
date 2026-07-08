@@ -26,7 +26,7 @@ export default function Leitor() {
       purchase_date: string;
       total_amount: number;
     };
-    scraped_data: any;
+    scraped_data: unknown;
   } | null>(null);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,7 +76,9 @@ export default function Leitor() {
       try {
         const errorData = await response.json();
         if (errorData.detail) errorMessage = errorData.detail;
-      } catch (_) {}
+      } catch {
+        /* corpo não-JSON: mantém a mensagem HTTP padrão */
+      }
       throw new Error(errorMessage);
     }
 
