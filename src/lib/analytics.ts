@@ -223,6 +223,197 @@ export interface MarketRank {
 
 const MIN_COVERAGE = 3;
 
+// ── Fase 5 — Lista inteligente ───────────────────────────────────────
+// Aqui o preço relevante é o PREÇO POR LINHA (o que custa comprar 1 do item,
+// como ele é vendido), não o preço por unidade base. Ex.: "1 arroz ≈ R$25".
+
+export interface UnitPriceStat {
+  concept: string;
+  displayName: string;
+  avg: number; // média móvel do preço unitário (por linha)
+  count: number;
+  lastDate: string;
+  byMarket: Map<string, { value: number; date: string }>; // preço mais recente por mercado
+}
+
+/** Estatística de preço por linha, por conceito (base das estimativas da lista). */
+export function computeUnitPriceStats(items: AnalyticsItem[]): Map<string, UnitPriceStat> {
+  const now = Date.now();
+  const grouped = new Map<string, { displayName: string; obs: Obs[] }>();
+  for (const it of items) {
+    if (!it.unit_price || it.unit_price <= 0) continue;
+    const k = conceptKey(it.product_name);
+    let e = grouped.get(k);
+    if (!e) {
+      e = { displayName: it.product_name, obs: [] };
+      grouped.set(k, e);
+    }
+    e.obs.push({ value: it.unit_price, date: it.purchase_date, market: it.supermarket_name });
+  }
+
+  const result = new Map<string, UnitPriceStat>();
+  grouped.forEach((e, k) => {
+    const byMarket = new Map<string, { value: number; date: string }>();
+    let lastDate = "";
+    for (const o of e.obs) {
+      if (o.date > lastDate) lastDate = o.date;
+      if (o.market) {
+        const cur = byMarket.get(o.market);
+        if (!cur || o.date > cur.date) byMarket.set(o.market, { value: o.value, date: o.date });
+      }
+    }
+    result.set(k, {
+      concept: k,
+      displayName: e.displayName,
+      avg: weightedAvg(e.obs, now),
+      count: e.obs.length,
+      lastDate,
+      byMarket,
+    });
+  });
+  return result;
+}
+
+/** Casa um nome (digitado na lista) com um conceito conhecido: exato, senão palpite. */
+export function matchConcept(
+  name: string,
+  stats: Map<string, UnitPriceStat>,
+): UnitPriceStat | null {
+  const direct = stats.get(conceptKey(name));
+  if (direct) return direct;
+  const guess = guessConcept(name, Array.from(stats.values()).map((s) => s.displayName));
+  return guess ? stats.get(conceptKey(guess)) ?? null : null;
+}
+
+export interface BasketLine {
+  id: string;
+  name: string;
+  quantity: number;
+  estimate: number | null;
+}
+
+export interface BasketEstimate {
+  total: number;
+  matchedCount: number;
+  totalItems: number;
+  lines: BasketLine[];
+}
+
+interface ListLike {
+  id: string;
+  product_name: string;
+  quantity: number | null;
+}
+
+/** 5.1 — Estimativa da lista pela média geral de cada conceito. */
+export function estimateBasket(
+  listItems: ListLike[],
+  stats: Map<string, UnitPriceStat>,
+): BasketEstimate {
+  let total = 0;
+  let matched = 0;
+  const lines: BasketLine[] = listItems.map((li) => {
+    const qty = li.quantity || 1;
+    const stat = matchConcept(li.product_name, stats);
+    const estimate = stat && stat.avg > 0 ? stat.avg * qty : null;
+    if (estimate != null) {
+      total += estimate;
+      matched += 1;
+    }
+    return { id: li.id, name: li.product_name, quantity: qty, estimate };
+  });
+  return { total, matchedCount: matched, totalItems: listItems.length, lines };
+}
+
+export interface MarketSim {
+  market: string;
+  total: number;
+  matchedCount: number;
+  totalItems: number;
+  coverage: number;
+  oldestDate: string | null;
+}
+
+/** 5.2 — Simulação da lista por mercado (preço mais recente de cada item no mercado). */
+export function simulateBasketByMarket(
+  listItems: ListLike[],
+  stats: Map<string, UnitPriceStat>,
+  minCoverage = 0.5,
+): MarketSim[] {
+  const markets = new Set<string>();
+  stats.forEach((s) => s.byMarket.forEach((_v, m) => markets.add(m)));
+  const totalItems = listItems.length;
+  if (totalItems === 0) return [];
+
+  const sims: MarketSim[] = [];
+  markets.forEach((market) => {
+    let total = 0;
+    let matched = 0;
+    let oldest: string | null = null;
+    for (const li of listItems) {
+      const mp = matchConcept(li.product_name, stats)?.byMarket.get(market);
+      if (mp) {
+        total += mp.value * (li.quantity || 1);
+        matched += 1;
+        if (!oldest || mp.date < oldest) oldest = mp.date;
+      }
+    }
+    const coverage = matched / totalItems;
+    if (coverage >= minCoverage) {
+      sims.push({ market, total, matchedCount: matched, totalItems, coverage, oldestDate: oldest });
+    }
+  });
+  return sims.sort((a, b) => a.total - b.total);
+}
+
+export interface RepurchaseSuggestion {
+  concept: string;
+  displayName: string;
+  lastDate: string;
+  avgIntervalDays: number;
+  overdueDays: number;
+}
+
+/** 5.3 — Conceitos "provavelmente acabando" pelo ciclo médio de recompra. */
+export function computeRepurchaseSuggestions(purchaseItems: AnalyticsItem[]): RepurchaseSuggestion[] {
+  const now = Date.now();
+  const byConcept = new Map<string, { displayName: string; dates: Set<string> }>();
+  for (const it of purchaseItems) {
+    const k = conceptKey(it.product_name);
+    let e = byConcept.get(k);
+    if (!e) {
+      e = { displayName: it.product_name, dates: new Set() };
+      byConcept.set(k, e);
+    }
+    e.dates.add(it.purchase_date.slice(0, 10));
+  }
+
+  const out: RepurchaseSuggestion[] = [];
+  byConcept.forEach((e, k) => {
+    const dates = Array.from(e.dates).sort();
+    if (dates.length < 2) return;
+    let sum = 0;
+    for (let i = 1; i < dates.length; i++) {
+      sum += (new Date(dates[i]).getTime() - new Date(dates[i - 1]).getTime()) / 86_400_000;
+    }
+    const avgInterval = sum / (dates.length - 1);
+    if (avgInterval <= 0) return;
+    const last = dates[dates.length - 1];
+    const daysSince = (now - new Date(last).getTime()) / 86_400_000;
+    const overdue = daysSince - avgInterval;
+    if (overdue >= 0) {
+      out.push({
+        concept: k,
+        displayName: e.displayName,
+        lastDate: last,
+        avgIntervalDays: avgInterval,
+        overdueDays: overdue,
+      });
+    }
+  });
+  return out.sort((a, b) => b.overdueDays - a.overdueDays);
+}
+
 /**
  * Ranqueia mercados pelo custo-benefício do padrão de consumo do usuário.
  * Para cada conceito, compara o preço do mercado com a média geral do usuário
