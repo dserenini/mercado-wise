@@ -9,7 +9,8 @@ services:
       # Origens permitidas para CORS (o front servido pelo web)
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
     ports:
-      - "8000:8000"
+      # Porta do host configurável (default 8000). Na VPS pode reusar a porta antiga.
+      - "${API_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/').status==200 else sys.exit(1)"]
       interval: 30s
@@ -29,7 +30,8 @@ services:
         VITE_SUPABASE_PROJECT_ID: ${VITE_SUPABASE_PROJECT_ID}
         VITE_API_URL: ${VITE_API_URL}
     ports:
-      - "8080:80"
+      # Porta do host configurável (default 8080). Na VPS: WEB_PORT=8001 reusa a porta antiga.
+      - "${WEB_PORT:-8080}:80"
     depends_on:
       - api
     restart: unless-stopped
