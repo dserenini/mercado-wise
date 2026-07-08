@@ -1,8 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import {
+  useShoppingLists,
+  useCreateList,
+  useDeleteList,
+} from "@/hooks/queries/useShoppingLists";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,95 +20,59 @@ import {
 import { Plus, ShoppingCart, Check, Trash2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-interface ShoppingList {
-  id: string;
-  name: string;
-  is_active: boolean;
-  created_at: string;
-  item_count?: number;
-}
-
 export default function Listas() {
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
-  
-  const [lists, setLists] = useState<ShoppingList[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  const { data: lists = [], isLoading, error } = useShoppingLists();
+  const createList = useCreateList();
+  const deleteList = useDeleteList();
+
   const [newListName, setNewListName] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/auth");
-    }
-  }, [user, authLoading, navigate]);
-
-  useEffect(() => {
-    if (user) {
-      fetchLists();
-    }
-  }, [user]);
-
-  const fetchLists = async () => {
-    const { data, error } = await supabase
-      .from("shopping_lists")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      toast({
-        title: "Erro ao carregar listas",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      setLists(data || []);
-    }
-    setLoading(false);
-  };
-
-  const createList = async () => {
-    if (!newListName.trim() || !user) return;
-    
-    setCreating(true);
-    const { error } = await supabase.from("shopping_lists").insert({
-      name: newListName.trim(),
-      user_id: user.id,
+  if (error) {
+    toast({
+      title: "Erro ao carregar listas",
+      description: (error as Error).message,
+      variant: "destructive",
     });
+  }
 
-    if (error) {
-      toast({
-        title: "Erro ao criar lista",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({ title: "Lista criada!" });
-      setNewListName("");
-      setDialogOpen(false);
-      fetchLists();
-    }
-    setCreating(false);
+  const handleCreate = () => {
+    if (!newListName.trim() || !user) return;
+    createList.mutate(
+      { name: newListName.trim(), userId: user.id },
+      {
+        onSuccess: () => {
+          toast({ title: "Lista criada!" });
+          setNewListName("");
+          setDialogOpen(false);
+        },
+        onError: (err) =>
+          toast({
+            title: "Erro ao criar lista",
+            description: (err as Error).message,
+            variant: "destructive",
+          }),
+      }
+    );
   };
 
-  const deleteList = async (id: string) => {
-    const { error } = await supabase.from("shopping_lists").delete().eq("id", id);
-    
-    if (error) {
-      toast({
-        title: "Erro ao excluir lista",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({ title: "Lista excluída" });
-      fetchLists();
-    }
+  const handleDelete = (id: string) => {
+    deleteList.mutate(id, {
+      onSuccess: () => toast({ title: "Lista excluída" }),
+      onError: (err) =>
+        toast({
+          title: "Erro ao excluir lista",
+          description: (err as Error).message,
+          variant: "destructive",
+        }),
+    });
   };
 
-  if (authLoading || loading) {
+  if (isLoading) {
     return (
       <AppLayout>
         <div className="flex items-center justify-center h-64">
@@ -142,14 +110,14 @@ export default function Listas() {
                   value={newListName}
                   onChange={(e) => setNewListName(e.target.value)}
                   className="touch-target"
-                  onKeyDown={(e) => e.key === "Enter" && createList()}
+                  onKeyDown={(e) => e.key === "Enter" && handleCreate()}
                 />
                 <Button
-                  onClick={createList}
+                  onClick={handleCreate}
                   className="w-full touch-target"
-                  disabled={creating || !newListName.trim()}
+                  disabled={createList.isPending || !newListName.trim()}
                 >
-                  {creating ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
+                  {createList.isPending ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
                   Criar Lista
                 </Button>
               </div>
@@ -204,7 +172,7 @@ export default function Listas() {
                       className="text-muted-foreground hover:text-destructive"
                       onClick={(e) => {
                         e.stopPropagation();
-                        deleteList(list.id);
+                        handleDelete(list.id);
                       }}
                     >
                       <Trash2 className="h-4 w-4" />

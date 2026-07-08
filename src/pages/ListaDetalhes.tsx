@@ -154,10 +154,6 @@ export default function ListaDetalhes() {
   );
 
   useEffect(() => {
-    if (!authLoading && !user) navigate("/auth");
-  }, [user, authLoading, navigate]);
-
-  useEffect(() => {
     if (user && id) {
       fetchListAndItems();
     }
