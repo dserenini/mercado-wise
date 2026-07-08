@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { useList, useListItems, type ListItem } from "@/hooks/queries/useListItems";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,22 +27,6 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-
-interface ListItem {
-  id: string;
-  list_id: string;
-  product_name: string;
-  is_checked: boolean;
-  quantity: number | null;
-  unit: string | null;
-  position: number | null;
-}
-
-interface ShoppingList {
-  id: string;
-  name: string;
-  is_active: boolean;
-}
 
 interface SortableItemProps {
   item: ListItem;
@@ -132,12 +116,12 @@ function SortableItem({ item, toggleItemCheck, deleteItem, updateQuantity }: Sor
 export default function ListaDetalhes() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
-  
-  const [list, setList] = useState<ShoppingList | null>(null);
+
+  const { data: listData, error: listError } = useList(id);
+  const { data: itemsData, isLoading: loading, error: itemsError, refetch } = useListItems(id);
+
   const [items, setItems] = useState<ListItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [newItemName, setNewItemName] = useState("");
   const [addingItem, setAddingItem] = useState(false);
 
@@ -153,47 +137,26 @@ export default function ListaDetalhes() {
     })
   );
 
+  // Semeia o estado local (fonte do update otimista do DnD/checkbox)
   useEffect(() => {
-    if (user && id) {
-      fetchListAndItems();
-    }
-  }, [user, id]);
+    if (itemsData) setItems(itemsData);
+  }, [itemsData]);
 
-  const fetchListAndItems = async () => {
-    if (!id) return;
-    try {
-      const { data: listData, error: listError } = await supabase
-        .from("shopping_lists")
-        .select("*")
-        .eq("id", id)
-        .single();
-        
-      if (listError) throw listError;
-      setList(listData);
-
-      const { data: itemsData, error: itemsError } = await supabase
-        .from("list_items")
-        .select("*")
-        .eq("list_id", id)
-        .order("position", { ascending: true })
-        .order("created_at", { ascending: true }); // Fallback sorting
-
-      if (itemsError) throw itemsError;
-      setItems(itemsData || []);
-    } catch (error: any) {
+  // Erro de carregamento → volta para as listas
+  useEffect(() => {
+    const err = listError || itemsError;
+    if (err) {
       toast({
         title: "Erro ao carregar lista",
-        description: error.message,
+        description: (err as Error).message,
         variant: "destructive",
       });
       navigate("/listas");
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [listError, itemsError, toast, navigate]);
 
   const addItem = async () => {
-    if (!newItemName.trim() || !user || !id) return;
+    if (!newItemName.trim() || !id) return;
     setAddingItem(true);
     
     // Assign position to the bottom of the list
@@ -214,12 +177,12 @@ export default function ListaDetalhes() {
 
       if (error) throw error;
       
-      setItems([...items, data]);
+      setItems([...items, data as ListItem]);
       setNewItemName("");
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Erro ao adicionar item",
-        description: error.message,
+        description: (error as Error).message,
         variant: "destructive",
       });
     } finally {
@@ -238,11 +201,11 @@ export default function ListaDetalhes() {
         .eq("id", item.id);
 
       if (error) throw error;
-    } catch (error: any) {
-      fetchListAndItems();
+    } catch (error) {
+      refetch();
       toast({
         title: "Erro ao atualizar item",
-        description: error.message,
+        description: (error as Error).message,
         variant: "destructive",
       });
     }
@@ -262,10 +225,10 @@ export default function ListaDetalhes() {
         .eq("id", itemId);
 
       if (error) throw error;
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Erro ao atualizar quantidade",
-        description: error.message,
+        description: (error as Error).message,
         variant: "destructive",
       });
     }
@@ -280,13 +243,13 @@ export default function ListaDetalhes() {
         .eq("id", itemId);
 
       if (error) throw error;
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Erro ao remover item",
-        description: error.message,
+        description: (error as Error).message,
         variant: "destructive",
       });
-      fetchListAndItems();
+      refetch();
     }
   };
 
@@ -302,11 +265,11 @@ export default function ListaDetalhes() {
 
       if (error) throw error;
       toast({ title: "Lista limpa!" });
-    } catch (error: any) {
-      fetchListAndItems();
+    } catch (error) {
+      refetch();
       toast({
         title: "Erro ao limpar lista",
-        description: error.message,
+        description: (error as Error).message,
         variant: "destructive",
       });
     }
@@ -323,10 +286,10 @@ export default function ListaDetalhes() {
       if (error) throw error;
       toast({ title: "Lista finalizada com sucesso!" });
       navigate("/listas");
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Erro ao finalizar lista",
-        description: error.message,
+        description: (error as Error).message,
         variant: "destructive",
       });
     }
@@ -359,7 +322,7 @@ export default function ListaDetalhes() {
               .eq("id", update.id)
           )
         );
-      } catch (error: any) {
+      } catch (error) {
         toast({
           title: "Erro ao salvar ordem",
           description: "Não foi possível sincronizar a nova ordem.",
@@ -369,7 +332,7 @@ export default function ListaDetalhes() {
     }
   };
 
-  if (authLoading || loading) {
+  if (loading) {
     return (
       <AppLayout>
         <div className="flex items-center justify-center h-64">
@@ -379,7 +342,7 @@ export default function ListaDetalhes() {
     );
   }
 
-  if (!list) return null;
+  if (!listData) return null;
 
   return (
     <AppLayout>
@@ -390,7 +353,7 @@ export default function ListaDetalhes() {
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
-              <h1 className="font-display font-bold text-2xl tracking-tight">{list.name}</h1>
+              <h1 className="font-display font-bold text-2xl tracking-tight">{listData.name}</h1>
               <p className="text-muted-foreground text-sm">
                 {items.filter(i => i.is_checked).length} de {items.length} itens marcados
               </p>

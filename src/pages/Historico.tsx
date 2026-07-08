@@ -1,8 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  usePurchases,
+  usePurchaseItems,
+  useDeletePurchase,
+  useSaveManualPurchase,
+  type Purchase,
+  type PurchaseItem,
+} from "@/hooks/queries/usePurchases";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,25 +22,6 @@ import { Switch } from "@/components/ui/switch";
 import { Loader2, Receipt, Store, Calendar, Tag, Plus, Trash2, Filter, Pencil, X, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-interface PurchaseItem {
-  id: string;
-  product_name: string;
-  unit_price: number;
-  quantity: number;
-  total_price: number;
-  is_promotion: boolean;
-  rating: number | null;
-}
-
-interface Purchase {
-  id: string;
-  supermarket_name: string | null;
-  purchase_date: string;
-  total_amount: number | null;
-  created_at: string;
-  items?: PurchaseItem[];
-}
-
 interface ManualItem {
   id?: string;
   name: string;
@@ -45,16 +33,63 @@ interface ManualItem {
   markedForDeletion?: boolean;
 }
 
+function PurchaseItemsExpanded({
+  purchaseId,
+  formatCurrency,
+}: {
+  purchaseId: string;
+  formatCurrency: (v: number) => string;
+}) {
+  const { data: items = [], isLoading } = usePurchaseItems(purchaseId, true);
+
+  return (
+    <CardContent className="pt-0">
+      <div className="border-t border-border pt-4 space-y-3">
+        {isLoading ? (
+          <div className="flex justify-center py-4">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
+        ) : (
+          items.map((item) => (
+            <div
+              key={item.id}
+              className="flex items-center justify-between p-3 bg-muted/50 rounded-xl"
+            >
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">{item.product_name}</span>
+                  {item.is_promotion && (
+                    <Badge variant="secondary" className="bg-accent/20 text-accent text-xs">
+                      <Tag className="h-3 w-3 mr-1" />
+                      Promo
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {item.quantity}x {formatCurrency(item.unit_price)}
+                </p>
+              </div>
+              <span className="font-semibold">
+                {formatCurrency(item.total_price || item.unit_price * item.quantity)}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </CardContent>
+  );
+}
+
 export default function Historico() {
-  const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
 
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: purchases = [], isLoading: loading, error } = usePurchases();
+  const deletePurchase = useDeletePurchase();
+  const saveManual = useSaveManualPurchase();
+
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   // Filter state
   const [filterSupermarket, setFilterSupermarket] = useState<string>("all");
@@ -66,7 +101,6 @@ export default function Historico() {
   const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [purchaseToDelete, setPurchaseToDelete] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   // Manual purchase form state
   const [supermarketName, setSupermarketName] = useState("");
@@ -74,28 +108,14 @@ export default function Historico() {
   const [manualItems, setManualItems] = useState<ManualItem[]>([{ name: "", quantity: 1, unitPrice: 0, isPromotion: false, packageSize: "", packageUnit: "ml" }]);
 
   useEffect(() => {
-    if (user) {
-      fetchPurchases();
-    }
-  }, [user]);
-
-  const fetchPurchases = async () => {
-    const { data, error } = await supabase
-      .from("purchase_history")
-      .select("*")
-      .order("purchase_date", { ascending: false });
-
     if (error) {
       toast({
         title: "Erro ao carregar histórico",
-        description: error.message,
+        description: (error as Error).message,
         variant: "destructive",
       });
-    } else {
-      setPurchases(data || []);
     }
-    setLoading(false);
-  };
+  }, [error, toast]);
 
   // Get unique supermarkets for filter
   const uniqueSupermarkets = useMemo(() => {
@@ -132,26 +152,8 @@ export default function Historico() {
 
   const hasActiveFilters = filterSupermarket !== "all" || filterDateFrom || filterDateTo;
 
-  const fetchItems = async (purchaseId: string) => {
-    if (expandedId === purchaseId) {
-      setExpandedId(null);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("purchase_items")
-      .select("*")
-      .eq("purchase_id", purchaseId)
-      .eq("is_active", true);
-
-    if (!error && data) {
-      setPurchases((prev) =>
-        prev.map((p) =>
-          p.id === purchaseId ? { ...p, items: data } : p
-        )
-      );
-      setExpandedId(purchaseId);
-    }
+  const toggleExpand = (purchaseId: string) => {
+    setExpandedId((prev) => (prev === purchaseId ? null : purchaseId));
   };
 
   const addManualItem = () => {
@@ -184,23 +186,20 @@ export default function Historico() {
   const handleEditPurchase = async (purchase: Purchase, e: React.MouseEvent) => {
     e.stopPropagation();
 
-    // Fetch items if not already loaded
-    let items = purchase.items;
-    if (!items) {
-      const { data } = await supabase
-        .from("purchase_items")
-        .select("*")
-        .eq("purchase_id", purchase.id)
-        .eq("is_active", true);
-      items = data || [];
-    }
+    // Sempre busca os itens ativos da compra para preencher o formulário
+    const { data } = await supabase
+      .from("purchase_items")
+      .select("*")
+      .eq("purchase_id", purchase.id)
+      .eq("is_active", true);
+    const items = (data ?? []) as PurchaseItem[];
 
     setEditingPurchase(purchase);
     setSupermarketName(purchase.supermarket_name || "");
     setPurchaseDate(purchase.purchase_date);
     setManualItems(
       items.length > 0
-        ? items.map((item: any) => ({
+        ? items.map((item) => ({
           id: item.id,
           name: item.product_name,
           quantity: item.quantity || 1,
@@ -221,36 +220,22 @@ export default function Historico() {
     setDeleteDialogOpen(true);
   };
 
-  const handleConfirmDelete = async () => {
+  const handleConfirmDelete = () => {
     if (!purchaseToDelete) return;
-
-    setDeleting(true);
-
-    // Delete items first (due to foreign key)
-    await supabase.from("purchase_items").delete().eq("purchase_id", purchaseToDelete);
-
-    const { error } = await supabase
-      .from("purchase_history")
-      .delete()
-      .eq("id", purchaseToDelete);
-
-    if (error) {
-      toast({
-        title: "Erro ao excluir compra",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Compra excluída",
-        description: "A compra foi removida com sucesso.",
-      });
-      fetchPurchases();
-    }
-
-    setDeleting(false);
-    setDeleteDialogOpen(false);
-    setPurchaseToDelete(null);
+    deletePurchase.mutate(purchaseToDelete, {
+      onSuccess: () =>
+        toast({ title: "Compra excluída", description: "A compra foi removida com sucesso." }),
+      onError: (err) =>
+        toast({
+          title: "Erro ao excluir compra",
+          description: (err as Error).message,
+          variant: "destructive",
+        }),
+      onSettled: () => {
+        setDeleteDialogOpen(false);
+        setPurchaseToDelete(null);
+      },
+    });
   };
 
   const handleSaveManualPurchase = async () => {
@@ -318,63 +303,13 @@ export default function Historico() {
       // This checks if we filtered everything out unexpectedly.
     }
 
-    setSaving(true);
-
-    // Calculate total ONLY for active items
-    const activeItems = itemsToProcess.filter(i => !i.markedForDeletion);
+    // Total apenas dos itens ativos
+    const activeItems = itemsToProcess.filter((i) => !i.markedForDeletion);
     const totalAmount = activeItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 
-    const purchasePayload = {
-      supermarket_name: supermarketName || null,
-      purchase_date: purchaseDate,
-      total_amount: totalAmount,
-    };
-
-    let purchaseId = editingPurchase?.id;
-
-    if (editingPurchase) {
-      // Update existing purchase header
-      const { error: updateError } = await supabase
-        .from("purchase_history")
-        .update(purchasePayload)
-        .eq("id", editingPurchase.id);
-
-      if (updateError) {
-        toast({ title: "Erro ao atualizar compra", description: updateError.message, variant: "destructive" });
-        setSaving(false);
-        return;
-      }
-    } else {
-      // Create new purchase header
-      const { data: newPurchase, error: createError } = await supabase
-        .from("purchase_history")
-        .insert({
-          user_id: user.id,
-          ...purchasePayload
-        })
-        .select()
-        .single();
-
-      if (createError) {
-        toast({ title: "Erro ao criar compra", description: createError.message, variant: "destructive" });
-        setSaving(false);
-        return;
-      }
-      purchaseId = newPurchase.id;
-    }
-
-    if (!purchaseId) {
-      setSaving(false);
-      return;
-    }
-
-    // Prepare items for Upsert
-    // We process ALL items in itemsToProcess.
-    // - If markedForDeletion: set is_active = false
-    // - Else: set is_active = true
-    const itemsToUpsert = itemsToProcess.map((item) => ({
-      ...(item.id ? { id: item.id } : {}), // Include ID if likely updating
-      purchase_id: purchaseId,
+    // Linhas de item (is_active reflete o soft-delete; id presente = update)
+    const itemRows = itemsToProcess.map((item) => ({
+      ...(item.id ? { id: item.id } : {}),
       product_name: item.name,
       quantity: item.quantity,
       unit_price: item.unitPrice,
@@ -382,42 +317,35 @@ export default function Historico() {
       is_promotion: item.isPromotion,
       package_size: item.packageSize ? parseFloat(item.packageSize) : null,
       package_unit: item.packageUnit || null,
-      // CRITICAL UPDATE: Set is_active based on the flag
-      is_active: !item.markedForDeletion
+      is_active: !item.markedForDeletion,
     }));
 
-    const { error: itemsError } = await supabase.from("purchase_items").upsert(itemsToUpsert);
-
-    if (itemsError) {
-      toast({ title: "Erro ao salvar itens", description: itemsError.message, variant: "destructive" });
-    } else {
-      toast({
-        title: editingPurchase ? "Compra atualizada!" : "Compra criada!",
-        description: "Dados salvos com sucesso."
-      });
-
-      resetForm();
-      setSheetOpen(false);
-
-      // Refresh Lists
-      fetchPurchases();
-      // If we were editing and it was expanded, refresh items to show updates immediately
-      if (editingPurchase && expandedId === editingPurchase.id) {
-        // Force fetch items for this ID again
-        const { data: updatedItems } = await supabase
-          .from("purchase_items")
-          .select("*")
-          .eq("purchase_id", editingPurchase.id)
-          .eq("is_active", true); // Only active ones for display
-
-        if (updatedItems) {
-          setPurchases(prev => prev.map(p =>
-            p.id === editingPurchase.id ? { ...p, items: updatedItems, total_amount: totalAmount } : p
-          ));
-        }
+    saveManual.mutate(
+      {
+        editingId: editingPurchase?.id,
+        userId: user.id,
+        supermarketName,
+        purchaseDate,
+        totalAmount,
+        items: itemRows,
+      },
+      {
+        onSuccess: () => {
+          toast({
+            title: editingPurchase ? "Compra atualizada!" : "Compra criada!",
+            description: "Dados salvos com sucesso.",
+          });
+          resetForm();
+          setSheetOpen(false);
+        },
+        onError: (err) =>
+          toast({
+            title: "Erro ao salvar",
+            description: (err as Error).message,
+            variant: "destructive",
+          }),
       }
-    }
-    setSaving(false);
+    );
   };
 
   const formatCurrency = (value: number) => {
@@ -435,7 +363,7 @@ export default function Historico() {
     });
   };
 
-  if (authLoading || loading) {
+  if (loading) {
     return (
       <AppLayout>
         <div className="flex items-center justify-center h-64">
@@ -628,9 +556,9 @@ export default function Historico() {
                     <Button
                       className="w-full"
                       onClick={handleSaveManualPurchase}
-                      disabled={saving}
+                      disabled={saveManual.isPending}
                     >
-                      {saving ? (
+                      {saveManual.isPending ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                           Salvando...
@@ -723,7 +651,7 @@ export default function Historico() {
               <Card
                 key={purchase.id}
                 className="card-elevated cursor-pointer hover:shadow-xl transition-all duration-200"
-                onClick={() => fetchItems(purchase.id)}
+                onClick={() => toggleExpand(purchase.id)}
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
@@ -767,37 +695,8 @@ export default function Historico() {
                   </div>
                 </CardHeader>
 
-                {expandedId === purchase.id && purchase.items && (
-                  <CardContent className="pt-0">
-                    <div className="border-t border-border pt-4 space-y-3">
-                      {purchase.items.map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between p-3 bg-muted/50 rounded-xl"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-sm">
-                                {item.product_name}
-                              </span>
-                              {item.is_promotion && (
-                                <Badge variant="secondary" className="bg-accent/20 text-accent text-xs">
-                                  <Tag className="h-3 w-3 mr-1" />
-                                  Promo
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {item.quantity}x {formatCurrency(item.unit_price)}
-                            </p>
-                          </div>
-                          <span className="font-semibold">
-                            {formatCurrency(item.total_price || item.unit_price * item.quantity)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
+                {expandedId === purchase.id && (
+                  <PurchaseItemsExpanded purchaseId={purchase.id} formatCurrency={formatCurrency} />
                 )}
               </Card>
             ))}
@@ -815,13 +714,13 @@ export default function Historico() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={deletePurchase.isPending}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmDelete}
-              disabled={deleting}
+              disabled={deletePurchase.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? (
+              {deletePurchase.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Excluindo...
