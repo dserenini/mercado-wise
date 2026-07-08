@@ -68,12 +68,6 @@ export default function Insights() {
   const [productStats, setProductStats] = useState<ProductStats[]>([]);
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/auth");
-    }
-  }, [user, authLoading, navigate]);
-
-  useEffect(() => {
     if (user) {
       fetchData();
     }
