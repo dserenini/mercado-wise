@@ -1,7 +1,11 @@
-import os
+"""Normalização de nomes de produto via Gemini (SDK google-genai)."""
 import json
 import logging
-import google.generativeai as genai
+
+from google import genai
+from google.genai import types
+
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -38,56 +42,50 @@ Responda ESTRITAMENTE num formato JSON válido:
 Não retorne markdown fora do JSON.
 """
 
+_MODEL = "gemini-2.5-flash"
+
+
 class AINormalizerService:
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        if self.api_key:
-            genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel(
-                model_name='gemini-2.5-flash',
-                system_instruction=SYSTEM_PROMPT,
-                generation_config={"response_mime_type": "application/json"}
-            )
-        else:
-            self.model = None
+        self.api_key = settings.gemini_api_key
+        self.client = genai.Client(api_key=self.api_key) if self.api_key else None
 
-    def is_configured(self):
-        return self.model is not None
+    def is_configured(self) -> bool:
+        return self.client is not None
 
     def normalize_products_batch(self, raw_names: list[str]) -> dict[str, dict]:
-        """
-        Recebe uma lista de nomes não formatados (ex: 'PIC.BO.MATUR.kg') e pede para o Gemini
-        normalizar os nomes gramaticalmente, extraindo a unidade original de medida e a categoria.
-        Retorna um dicionário mapeando o nome raw para o resultado estruturado.
-        """
+        """Mapeia cada nome cru -> {normalized_name, unit, category}."""
         if not self.is_configured():
             logger.warning("Gemini API Key não configurada. Não é possível normalizar produtos por IA.")
             return {}
-
         if not raw_names:
             return {}
 
         user_prompt = f"Traduza os seguintes nomes originais tirados de um cupom: {json.dumps(raw_names)}"
-
         logger.info(f"🧠 Enviando batch de {len(raw_names)} produtos para o Gemini...")
 
         try:
-            # Requisita a geração ao modelo usando o JSON schema forçado pelo generation_config local/global
-            response = self.model.generate_content(user_prompt)
+            response = self.client.models.generate_content(
+                model=_MODEL,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    response_mime_type="application/json",
+                ),
+            )
             data = json.loads(response.text)
-            
-            result_map = {}
+
+            result_map: dict[str, dict] = {}
             for item in data.get("resultados", []):
                 raw_key = item.get("raw")
                 if raw_key:
                     result_map[raw_key] = {
                         "normalized_name": item.get("name", raw_key),
                         "unit": item.get("unit"),
-                        "category": item.get("category", "Geral")
+                        "category": item.get("category", "Geral"),
                     }
             logger.info(f"✅ Gemini devolveu {len(result_map)} normalizações com sucesso.")
             return result_map
-            
         except Exception as e:
             logger.error(f"❌ Erro ao chamar a API do Gemini: {e}")
             return {}

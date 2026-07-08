@@ -1,11 +1,12 @@
-"""Autenticação de requisições via JWT do Supabase.
+"""Dependencies FastAPI — autenticação por JWT do Supabase.
 
 O 'user_id' NUNCA vem do corpo da requisição — é derivado do token validado.
 """
 import logging
+
 from fastapi import Header, HTTPException, status
 
-from database import validate_token
+from app.db import validate_token
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,6 @@ class CurrentUser:
 
 
 async def get_current_user(authorization: str | None = Header(default=None)) -> CurrentUser:
-    """Dependency FastAPI: exige um 'Authorization: Bearer <jwt>' válido."""
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
