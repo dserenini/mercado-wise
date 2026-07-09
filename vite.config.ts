@@ -15,7 +15,9 @@ export default defineConfig(({ mode }) => ({
     mode === "development" && componentTagger(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.ico", "robots.txt", "placeholder.svg"],
+      // Registramos o SW manualmente em src/main.tsx (com update periódico e reload).
+      injectRegister: false,
+      includeAssets: ["favicon.ico", "robots.txt", "apple-touch-icon.png"],
       manifest: {
         name: "Mercado Fácil",
         short_name: "Mercado Fácil",
@@ -26,12 +28,17 @@ export default defineConfig(({ mode }) => ({
         display: "standalone",
         start_url: "/",
         icons: [
-          { src: "/favicon.ico", sizes: "48x48", type: "image/x-icon" },
-          // TODO(W4): adicionar ícones PNG dedicados 192x192 e 512x512 (inclusive maskable)
-          { src: "/placeholder.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
+          { src: "/pwa-192x192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/pwa-512x512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "/maskable-512x512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },
       workbox: {
+        // Novo SW assume o controle imediatamente (sem esperar todas as abas
+        // fecharem). Combinado com o listener "activated" do cliente, isso
+        // recarrega a página automaticamente quando há uma nova versão.
+        skipWaiting: true,
+        clientsClaim: true,
         // Não interceptar o backend (outra origem) nem rotas de API
         navigateFallbackDenylist: [/^\/api/],
       },

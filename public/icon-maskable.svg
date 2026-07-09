@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Mercado Fácil">
+  <defs>
+    <linearGradient id="bgm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22c55e"/>
+      <stop offset="1" stop-color="#16a34a"/>
+    </linearGradient>
+  </defs>
+  <!-- full-bleed: a plataforma aplica a máscara; glifo dentro da zona segura (80%) -->
+  <rect width="512" height="512" fill="url(#bgm)"/>
+  <g transform="translate(116 122) scale(11.5)" fill="none" stroke="#ffffff"
+     stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 3 h2.2 l2.66 12.42 a2 2 0 0 0 2 1.58 h9.78 a2 2 0 0 0 1.95 -1.57 l1.65 -7.43 H5.12"/>
+    <circle cx="8" cy="21" r="1.15" fill="#ffffff" stroke="none"/>
+    <circle cx="19" cy="21" r="1.15" fill="#ffffff" stroke="none"/>
+  </g>
+</svg>

@@ -10,5 +10,9 @@ import "@fontsource/plus-jakarta-sans/700.css";
 import "@fontsource/plus-jakarta-sans/800.css";
 import App from "./App.tsx";
 import "./index.css";
+import { registerPwa } from "./pwa";
 
 createRoot(document.getElementById("root")!).render(<App />);
+
+// Registra o service worker e mantém o app sempre na versão mais recente.
+registerPwa();
