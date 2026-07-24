@@ -15,7 +15,7 @@ _PKG_IN_NAME_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(kg|g|l|ml)\b", re.IGNORECASE
 # Colunas válidas de purchase_items que a normalização pode preencher.
 # Protege o insert de chaves estranhas vindas do dicionário/IA.
 ITEM_COLUMNS = {
-    "product_name", "raw_name", "cprod", "unit", "brand",
+    "product_name", "raw_name", "cprod", "gtin", "unit", "brand",
     "quantity", "unit_price", "total_price",
     "package_size", "package_unit",
 }
@@ -94,8 +94,49 @@ def process_scraped_items(db_client, raw_items: list[dict], ai: AINormalizerServ
 
     unique_raw_names = list({it["product_name"] for it in raw_items})
     cprods = list({it["cprod"] for it in raw_items if it.get("cprod")})
+    gtins = list({it["gtin"] for it in raw_items if it.get("gtin")})
 
     try:
+        # Camada 0: identidade GLOBAL por GTIN — a tabela "De→Para" por código de barras.
+        # O mesmo EAN é o mesmo produto em qualquer mercado. Cascata: cache local
+        # (gtin_catalog) → Open Food Facts (grátis). Traduzido uma vez, depois vem do cache
+        # — nunca mais passa pelo Gemini.
+        by_gtin: dict[str, dict] = {}
+        if gtins:
+            cached: dict[str, dict] = {}
+            try:
+                res_g = (
+                    db_client.table("gtin_catalog")
+                    .select("gtin, name, brand, package_size, package_unit, found")
+                    .in_("gtin", gtins)
+                    .execute()
+                )
+                cached = {r["gtin"]: r for r in (res_g.data or [])}
+            except Exception as e:
+                logger.error(f"Erro ao ler gtin_catalog: {e}")
+
+            # GTINs nunca consultados → Open Food Facts em paralelo (cada resolve_gtin cacheia).
+            to_off = [g for g in gtins if g not in cached]
+            if to_off:
+                from concurrent.futures import ThreadPoolExecutor
+                from app.services.gtin import resolve_gtin  # lazy: evita import circular
+                try:
+                    with ThreadPoolExecutor(max_workers=8) as pool:
+                        for g, row in zip(to_off, pool.map(resolve_gtin, to_off)):
+                            if row:
+                                cached[g] = row
+                except Exception as e:
+                    logger.warning(f"Resolução via Open Food Facts falhou: {e}")
+
+            for g, r in cached.items():
+                if r and r.get("name"):  # só serve como identidade se tiver nome canônico
+                    by_gtin[g] = {
+                        "normalized_name": r["name"],
+                        "brand": r.get("brand"),
+                        "package_size": r.get("package_size"),
+                        "package_unit": r.get("package_unit"),
+                    }
+
         # Camada 1a: identidade por mercado (cnpj_base, cprod)
         by_cprod: dict[str, dict] = {}
         if cnpj_base and cprods:
@@ -119,6 +160,9 @@ def process_scraped_items(db_client, raw_items: list[dict], ai: AINormalizerServ
         by_raw = {r["raw_name"]: r for r in (res.data or [])}
 
         def lookup(it: dict) -> dict | None:
+            gt = it.get("gtin")
+            if gt and gt in by_gtin:
+                return by_gtin[gt]
             cp = it.get("cprod")
             if cp and cp in by_cprod:
                 return by_cprod[cp]
@@ -128,48 +172,75 @@ def process_scraped_items(db_client, raw_items: list[dict], ai: AINormalizerServ
             it["product_name"] for it in raw_items if lookup(it) is None
         })
 
-        # Camada 2: Gemini para os desconhecidos
+        # Camada 2: Gemini SÓ para o que sobrou — código novo que nem o cache nem o Open
+        # Food Facts traduziram, ou item sem EAN (pesável). Cada tradução vira cache abaixo,
+        # então tende a zero conforme o catálogo amadurece.
         ai_map: dict[str, dict] = {}
         if unknown_names and ai.is_configured():
             ai_map = ai.normalize_products_batch(unknown_names)
-            if ai_map:
-                new_entries = []
-                seen_keys = set()
-                for it in raw_items:
-                    rn = it["product_name"]
-                    data = ai_map.get(rn)
-                    if not data or lookup(it) is not None:
-                        continue
-                    cp = it.get("cprod")
-                    key = (cnpj_base, cp) if (cnpj_base and cp) else ("raw", rn)
-                    if key in seen_keys:
-                        continue
-                    seen_keys.add(key)
-                    entry = {
-                        "raw_name": rn,
-                        "normalized_name": data["normalized_name"],
-                        "brand": data.get("brand"),
-                        "unit": data.get("unit"),
-                        "package_size": data.get("package_size"),
-                        "package_unit": data.get("package_unit"),
-                        "category": data.get("category", "Geral"),
-                        "status": "pending",
-                        "confidence_score": 1,
-                    }
-                    if cnpj_base and cp:
-                        entry["cnpj_base"] = cnpj_base
-                        entry["cprod"] = cp
-                    new_entries.append(entry)
-                try:
-                    if new_entries:
-                        db_client.table("product_dictionary").insert(new_entries).execute()
-                        logger.info(f"💾 {len(new_entries)} novos produtos no dicionário (PENDING).")
-                except Exception as e:
-                    logger.error(f"Erro ao salvar novas traduções IA no BD: {e}")
+
+        def norm_for(it: dict) -> dict | None:
+            return ai_map.get(it["product_name"])
+
+        # Cacheia as normalizações NOVAS (visão ou Gemini) no dicionário e no gtin_catalog global.
+        new_entries = []
+        gtin_entries: dict[str, dict] = {}   # gtin -> linha p/ o gtin_catalog global
+        seen_keys = set()
+        for it in raw_items:
+            rn = it["product_name"]
+            data = norm_for(it)
+            if not data or lookup(it) is not None:
+                continue
+            # Item com EAN novo → alimenta o catálogo GLOBAL de GTIN (cross-store).
+            gt = it.get("gtin")
+            if gt and gt not in by_gtin and gt not in gtin_entries:
+                gtin_entries[gt] = {
+                    "gtin": gt,
+                    "name": data["normalized_name"],
+                    "brand": data.get("brand"),
+                    "package_size": data.get("package_size"),
+                    "package_unit": data.get("package_unit"),
+                    "source": "user",
+                    "found": True,
+                }
+            cp = it.get("cprod")
+            key = (cnpj_base, cp) if (cnpj_base and cp) else ("raw", rn)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            entry = {
+                "raw_name": rn,
+                "normalized_name": data["normalized_name"],
+                "brand": data.get("brand"),
+                "unit": data.get("unit"),
+                "package_size": data.get("package_size"),
+                "package_unit": data.get("package_unit"),
+                "category": data.get("category", "Geral"),
+                "status": "pending",
+                "confidence_score": 1,
+            }
+            if cnpj_base and cp:
+                entry["cnpj_base"] = cnpj_base
+                entry["cprod"] = cp
+            new_entries.append(entry)
+        try:
+            if new_entries:
+                db_client.table("product_dictionary").insert(new_entries).execute()
+                logger.info(f"💾 {len(new_entries)} novos produtos no dicionário (PENDING).")
+        except Exception as e:
+            logger.error(f"Erro ao salvar novas traduções no BD: {e}")
+        try:
+            if gtin_entries:
+                db_client.table("gtin_catalog").upsert(
+                    list(gtin_entries.values()), on_conflict="gtin"
+                ).execute()
+                logger.info(f"🏷️ {len(gtin_entries)} GTINs alimentados no catálogo global.")
+        except Exception as e:
+            logger.error(f"Erro ao alimentar gtin_catalog: {e}")
 
         # Aplica a normalização a cada item
         for item in raw_items:
-            entry = lookup(item) or ai_map.get(item["product_name"])
+            entry = lookup(item) or norm_for(item)
             _apply_entry(item, entry)
 
     except Exception as e:

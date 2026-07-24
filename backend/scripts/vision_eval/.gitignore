@@ -1,0 +1,5 @@
+# Fixtures = notas fiscais REAIS (chave de acesso, CNPJ, foto) — dados pessoais, fora do git.
+# Forneça localmente: fixtures/nota_bh.webarchive e fixtures/nota_papel.jpeg
+fixtures/
+# Artefatos gerados pelo eval (variantes degradadas, crops, relatório, logs).
+out/

@@ -118,6 +118,24 @@ def test_parse_sefaz_html_h7_layout_access_key_from_page():
     assert result["access_key"] == "31260701928075010324650090001644821531172074"
 
 
+def test_parse_sefaz_html_captcha_page_fails():
+    """Página anti-bot da Sefaz (reCAPTCHA/Turnstile) não deve virar nota vazia."""
+    html = (
+        "<html><body><div id='formPrincipal:messages'>"
+        "reCAPTCHA é um serviço que protege este site."
+        "<div class='g-recaptcha'></div>"
+        "<div class='cf-turnstile' data-sitekey='0x4AAAAAAAZxv_tC7WhZeETe'></div>"
+        "</body></html>"
+    )
+    chave = "31260704641376017454650700002386351807244122"
+    url = f"https://portalsped.fazenda.mg.gov.br/portalnfce/sistema/qrcode.xhtml?p={chave}|2|1"
+    result = _parse_sefaz_html(html, url=url, cnpj_base=None)
+
+    assert result["success"] is False
+    assert result["error"] == "sefaz_inacessivel"
+    assert result["reason"] == "captcha"
+
+
 def test_parse_sefaz_html_classic_layout():
     html = (FIXTURES / "sefaz_mg_classic.html").read_text(encoding="utf-8")
     result = _parse_sefaz_html(html, url="https://nfce.fazenda.mg.gov.br/x", cnpj_base=None)

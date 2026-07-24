@@ -12,7 +12,12 @@ from app.limiter import limiter
 from app.services.ai_normalizer import AINormalizerService
 from app.services.dedup import process_scraped_items, check_duplicate, ITEM_COLUMNS
 from app.services.scrapers import extract_url_from_image, scrape_receipt
-from app.services.scrapers.mg_sefaz import _parse_sefaz_html
+from app.services.scrapers.mg_sefaz import (
+    _parse_sefaz_html, clean_market_name, extract_cnpj_base_from_url,
+    extract_access_key_from_url,
+)
+from app.services.vision.pipeline import run_photo_pipeline
+from app.services.vision.validators import access_key_is_valid
 
 # Colunas derivadas/proveniência que o reprocessamento pode sobrescrever com
 # segurança (não toca quantidade/preço/promoção/nota/soft-delete do usuário).
@@ -144,6 +149,11 @@ async def extract_receipt_data(
     # 4. Scraping (rede → threadpool). O registry recusa domínios fora da allowlist (anti-SSRF).
     scraping_result = await run_in_threadpool(scrape_receipt, url_sefaz)
     if not scraping_result.get("success"):
+        if scraping_result.get("error") == "sefaz_inacessivel":
+            # Captcha/anti-bot ou portal fora do ar: acessamos a URL mas a Sefaz não
+            # entregou a nota. Não gravamos nada — avisamos o usuário claramente.
+            logger.warning(f"🔒 Sefaz inacessível (motivo: {scraping_result.get('reason')}).")
+            raise HTTPException(status_code=502, detail="Não foi possível acessar a SEFAZ")
         raise HTTPException(status_code=502, detail="Não foi possível ler os dados da nota na Sefaz.")
 
     mercado = scraping_result.get("supermarket_name", "Desconhecido")
@@ -206,6 +216,156 @@ async def extract_receipt_data(
         "status": "saved",
         "mensagem": f"Método({layer_used}) Lemos {len(itens)} produtos no valor de R$ {total:.2f} do {mercado} e salvamos!",
         "data": scraping_result,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Ingestão por FOTO (OCR de visão) — pivô de 2026-07-24. Traz o EAN que o QR não dá.
+# --------------------------------------------------------------------------- #
+def _verdict_payload(v) -> dict:
+    """Serializa o veredito dos validadores para o front (semáforo + flags por item)."""
+    return {
+        "semaforo": v.traffic_light,
+        "n_ok": v.n_ok, "n_low": v.n_low, "n_fail": v.n_fail,
+        "sum_items": v.sum_items, "total": v.declared_total,
+        "total_ok": v.total_ok, "total_diff": v.total_diff,
+        "itens": [
+            {"index": i.index, "descricao": i.descricao, "label": i.label,
+             "ean_status": i.ean_status, "line_status": i.line_status, "problems": i.problems}
+            for i in v.items
+        ],
+    }
+
+
+def _persist_extraction(access_token, user_id, purchase_id, extraction, semaforo, access_key) -> None:
+    """Guarda a extração crua da foto (proveniência/reprocessamento). Falha aqui não invalida a compra."""
+    uc = user_client(access_token)
+    if not uc:
+        return
+    try:
+        uc.table("receipt_extractions").insert({
+            "user_id": user_id,
+            "purchase_id": purchase_id,
+            "engine": extraction.engine or "unknown",
+            "extraction": extraction.to_dict(),
+            "semaforo": semaforo,
+            "access_key": access_key,
+        }).execute()
+    except Exception as e:
+        logger.warning(f"receipt_extractions não gravado (compra #{purchase_id}): {e}")
+
+
+@router.post("/upload-nota-foto")
+@limiter.limit("10/minute")
+async def upload_nota_foto(
+    request: Request,
+    file: UploadFile = File(...),
+    force_save: str = Form("false"),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Ingestão pela FOTO do cupom: OCR de visão (Gemini) → validadores → normalização.
+    Contorna o captcha da Sefaz e captura o EAN impresso no papel."""
+    user_id = current_user.id
+    force = force_save.lower() == "true"
+    logger.info(f"📷 Nota-foto: {file.filename} | user: {user_id} | force: {force}")
+
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Ei, mande a foto do cupom!")
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit() and int(content_length) > settings.max_upload_bytes:
+        raise HTTPException(status_code=413, detail=f"Imagem muito grande (máx {settings.max_upload_mb:.0f} MB).")
+    img_bytes = await file.read()
+    if len(img_bytes) > settings.max_upload_bytes:
+        raise HTTPException(status_code=413, detail=f"Imagem muito grande (máx {settings.max_upload_mb:.0f} MB).")
+    if not img_bytes:
+        raise HTTPException(status_code=400, detail="Arquivo vazio.")
+
+    # 1. OCR de visão + validação (rede/CPU → threadpool)
+    try:
+        pipe = await run_in_threadpool(run_photo_pipeline, img_bytes)
+    except Exception as e:
+        logger.error(f"❌ OCR de visão falhou: {e}")
+        raise HTTPException(status_code=502, detail="Não conseguimos ler a nota nessa foto. Tente uma foto mais nítida.")
+
+    extraction = pipe["extraction"]
+    verdict = pipe["verdict"]
+    semaforo = pipe["semaforo"]
+    itens_raw = pipe["items"]
+    logger.info(f"👁️ Visão: {len(itens_raw)} itens | semáforo={semaforo} "
+                f"(ok={verdict.n_ok} low={verdict.n_low} fail={verdict.n_fail})")
+
+    # 2. QR complementar da MESMA foto (best-effort) → chave/cnpj_base p/ dedup e proveniência
+    url_sefaz, _ = await run_in_threadpool(extract_url_from_image, img_bytes)
+    cnpj_base = extract_cnpj_base_from_url(url_sefaz) if url_sefaz else None
+    access_key = (extract_access_key_from_url(url_sefaz) if url_sefaz else None) \
+        or (extraction.emitente.chave_acesso if access_key_is_valid(extraction.emitente.chave_acesso) else None)
+
+    # 3. Semáforo vermelho → não persiste; pede refação (a menos que o usuário force)
+    if semaforo == "vermelho" and not force:
+        return {
+            "success": False, "status": "reshoot", "semaforo": semaforo,
+            "mensagem": "A foto não ficou boa (borrão/algo cobrindo, ou o total não fecha). "
+                        "Tente de novo enquadrando a nota inteira, sem reflexo.",
+            "veredito": _verdict_payload(verdict),
+        }
+
+    # 4. Cabeçalho
+    cnpj = extraction.emitente.cnpj
+    if not cnpj_base and cnpj and len(cnpj) >= 8:
+        cnpj_base = cnpj[:8]
+    mercado = clean_market_name(extraction.emitente.nome or "", cnpj_base=cnpj_base)
+    total = extraction.emitente.total if extraction.emitente.total is not None else verdict.sum_items
+    purchase_date = extraction.emitente.data
+    payment_method = extraction.emitente.forma_pagamento
+
+    # 5. Normalização (dicionário/GTIN/Gemini) e catálogo global de mercados
+    itens = await run_in_threadpool(process_scraped_items, db, itens_raw, ai_service, cnpj_base)
+    supermarket_id = await run_in_threadpool(_upsert_supermarket, cnpj, mercado, extraction.emitente.endereco)
+
+    # 6. Persistência sob RLS
+    try:
+        result = await run_in_threadpool(
+            _persist_purchase, current_user.access_token, user_id, force,
+            url_sefaz, mercado, total, purchase_date, itens,
+            access_key, cnpj, payment_method, supermarket_id, None,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erro de Banco (nota-foto): {e}")
+        raise HTTPException(status_code=500, detail="Erro ao salvar a nota. Tente novamente.")
+
+    if result["outcome"] == "duplicate":
+        existing = result["existing"]
+        return {
+            "success": False, "status": "duplicate", "semaforo": semaforo,
+            "mensagem": "Esta nota já está no seu histórico.",
+            "existing": {
+                "id": existing.get("id"),
+                "supermarket_name": existing.get("supermarket_name"),
+                "purchase_date": existing.get("purchase_date"),
+                "total_amount": existing.get("total_amount"),
+            },
+            "veredito": _verdict_payload(verdict),
+        }
+
+    purchase_id = result["purchase_id"]
+    await run_in_threadpool(_persist_extraction, current_user.access_token, user_id,
+                            purchase_id, extraction, semaforo, access_key)
+
+    status = "saved" if semaforo == "verde" else "saved_review"
+    extra = " Confira os itens destacados." if semaforo == "amarelo" else ""
+    logger.info(f"✅ Nota-foto #{purchase_id} salva ({semaforo}).")
+    return {
+        "success": True, "status": status, "semaforo": semaforo,
+        "purchase_id": purchase_id,
+        "mensagem": f"Lemos {len(itens)} itens (R$ {float(total):.2f}) do {mercado}.{extra}",
+        "veredito": _verdict_payload(verdict),
+        "data": {
+            "supermarket_name": mercado, "total_amount": total,
+            "purchase_date": purchase_date, "cnpj": cnpj,
+            "access_key": access_key, "items": itens,
+        },
     }
 
 

@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 export interface PurchaseItem {
   id: string;
   product_name: string;
+  brand?: string | null;
   unit_price: number;
   quantity: number;
   total_price: number;

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -75,7 +76,10 @@ function PurchaseItemsExpanded({
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm">{item.product_name}</span>
+                    <span className="font-medium text-sm">
+                      {item.product_name}
+                      {item.brand && <span className="text-muted-foreground font-normal"> — {item.brand}</span>}
+                    </span>
                     {item.is_promotion && (
                       <Badge variant="secondary" className="bg-accent/20 text-accent text-xs">
                         <Tag className="h-3 w-3 mr-1" />
@@ -236,9 +240,7 @@ export default function Historico() {
     setEditingPurchase(null);
   };
 
-  const handleEditPurchase = async (purchase: Purchase, e: React.MouseEvent) => {
-    e.stopPropagation();
-
+  const openEditFor = async (purchase: Purchase) => {
     // Sempre busca os itens ativos da compra para preencher o formulário
     const { data } = await supabase
       .from("purchase_items")
@@ -266,6 +268,25 @@ export default function Historico() {
     );
     setSheetOpen(true);
   };
+
+  const handleEditPurchase = (purchase: Purchase, e: React.MouseEvent) => {
+    e.stopPropagation();
+    openEditFor(purchase);
+  };
+
+  // Deep-link do Leitor (?edit=<id>): abre a compra recém-salva direto na edição.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const editId = searchParams.get("edit");
+    if (!editId || purchases.length === 0) return;
+    const target = purchases.find((p) => p.id === editId);
+    if (target) {
+      openEditFor(target);
+      searchParams.delete("edit");
+      setSearchParams(searchParams, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, purchases]);
 
   const handleDeleteClick = (purchaseId: string, e: React.MouseEvent) => {
     e.stopPropagation();

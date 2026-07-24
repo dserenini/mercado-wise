@@ -366,6 +366,27 @@ def _parse_sefaz_html(html: str, url: str, cnpj_base: str | None) -> ScrapeResul
     cnpj, market_address = _extract_emitente(soup, body_text)
     payment_method = _extract_payment_method(body_text)
 
+    # Sem itens = a Sefaz não entregou a nota. Desde jul/2026 o portal do QR passou
+    # a exigir captcha (reCAPTCHA + Cloudflare Turnstile): o servidor recebe só o
+    # desafio anti-bot, sem a tabela de produtos. Falhamos aqui para NÃO gravar uma
+    # compra vazia (0 itens / R$ 0) — o router traduz isso numa mensagem ao usuário.
+    if not items_comprados:
+        page_lc = html.lower()
+        is_captcha = any(tok in page_lc for tok in ("g-recaptcha", "cf-turnstile", "recaptcha"))
+        logger.warning(
+            "⚠️ Nota sem itens — %s.",
+            "desafio anti-bot (captcha) da Sefaz" if is_captcha
+            else "página sem tabela de produtos",
+        )
+        return {
+            "success": False,
+            "error": "sefaz_inacessivel",
+            "reason": "captcha" if is_captcha else "sem_itens",
+            "supermarket_name": market_name,
+            "access_key": access_key,
+            "url": url,
+        }
+
     return {
         "success": True,
         "supermarket_name": market_name,
@@ -428,4 +449,4 @@ class MGSefazScraper:
                 return {"success": False, "error": f"parse: {e}"}
 
         logger.error(f"Erro ao acessar a Sefaz MG após {attempts} tentativas: {last_err}")
-        return {"success": False, "error": str(last_err)}
+        return {"success": False, "error": "sefaz_inacessivel", "reason": str(last_err)}
