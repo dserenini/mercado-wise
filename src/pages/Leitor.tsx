@@ -13,7 +13,7 @@ type Semaforo = "verde" | "amarelo" | "vermelho";
 interface VerdictItem {
   index: number;
   descricao: string | null;
-  label: "OK" | "baixa_confianca" | "falhou" | string;
+  label: "ok" | "baixa_confianca" | "falhou" | string;
   problems: string[];
 }
 
@@ -343,7 +343,7 @@ export default function Leitor() {
 /** Painel de resultado da leitura por foto: semáforo + itens sinalizados pelos validadores. */
 function ResultPanel({ result, onRetry, onConferir }: { result: NotaFotoResult; onRetry: () => void; onConferir: () => void }) {
   const { semaforo, veredito } = result;
-  const flagged = veredito?.itens.filter((i) => i.label !== "OK") ?? [];
+  const flagged = veredito?.itens.filter((i) => i.label !== "ok") ?? [];
 
   const theme = {
     verde:    { border: "border-green-500/40",  bg: "bg-green-500/10",  Icon: CheckCircle2,  color: "text-green-600" },

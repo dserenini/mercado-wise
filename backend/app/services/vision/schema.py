@@ -86,9 +86,16 @@ class ReceiptExtraction:
 
         itens = []
         for it in itens_raw:
+            ean = _digits(it.get("ean") or it.get("gtin") or it.get("codigo_barras"))
+            cod_interno = str(it.get("cod_interno")).strip() if it.get("cod_interno") else None
+            # EAN/GTIN válido tem 8-14 dígitos. Código curto (< 8) é de balança/PLU (pesável),
+            # não um código de barras — a visão às vezes o põe em "ean" por engano.
+            if ean and len(ean) < 8:
+                cod_interno = cod_interno or ean
+                ean = None
             itens.append(Item(
-                ean=_digits(it.get("ean") or it.get("gtin") or it.get("codigo_barras")),
-                cod_interno=(str(it.get("cod_interno")).strip() if it.get("cod_interno") else None),
+                ean=ean,
+                cod_interno=cod_interno,
                 descricao=(it.get("descricao") or it.get("nome") or it.get("product_name")),
                 qtd=_num(it.get("qtd") if it.get("qtd") is not None else it.get("quantity")),
                 unidade=(it.get("unidade") or it.get("unit")),
