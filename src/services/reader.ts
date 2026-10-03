@@ -28,7 +28,9 @@ a etapa seguinte; um dígito inventado, não.
 quality.orientation.
 3. Itens: um por item da tabela (colunas típicas: Código, Descrição, Qtd, Un, Vl Unit, \
 Vl Total), na ordem impressa. Um item pode ocupar duas linhas (descrição numa, quantidade \
-e preços na seguinte): junte-as num só item.
+e preços na seguinte): junte-as num só item. Alguns layouts trazem, entre parênteses \
+depois do preço unitário, o valor aproximado de tributos (coluna "VLTR"): isso não é \
+preço nem desconto; ignore.
    - ean: o código da coluna Código quando tiver de 8 a 14 dígitos (produto embalado).
    - store_code: se o código for curto (menos de 8 dígitos, típico de hortifruti e \
 açougue pesados na balança), coloque-o aqui e deixe ean null.
