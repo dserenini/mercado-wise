@@ -24,3 +24,6 @@ eval/ground-truth/
 !.vscode/extensions.json
 .idea/
 .DS_Store
+
+# Vercel CLI (local)
+.vercel
