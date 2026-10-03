@@ -3,14 +3,14 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { type Config, config } from "../config.js";
 import {
-  CATEGORIES,
   type ItemInterpreted,
   ItemInterpretedSchema,
 } from "../schemas/interpretation.js";
 import type { ItemRead } from "../schemas/receipt.js";
 import { claudeClient } from "./claude.js";
 
-export const INTERPRET_PROMPT_VERSION = "interpret-v1";
+// v2: ajustada com a revisão manual de 168 itens (eval/ground-truth/interpretation-v1.json).
+export const INTERPRET_PROMPT_VERSION = "interpret-v2";
 
 // Ponto de partida: legacy-v0 backend/app/services/ai_normalizer.py. Mudança principal:
 // o antigo apagava sabor/variante ("Monster Ultra" → "Energético Monster"); aqui a
@@ -18,37 +18,73 @@ export const INTERPRET_PROMPT_VERSION = "interpret-v1";
 export const INTERPRET_PROMPT = `\
 Você interpreta descrições de produtos impressas em cupons fiscais de supermercados \
 brasileiros. As descrições são abreviadas pelo sistema de cada mercado (ex.: \
-"CHO.LACT.DI.N.80G"). Para cada item, devolva:
+"CHO.LACT.DI.N.80G"). O objetivo é comparar preços: o mesmo produto precisa receber \
+exatamente os mesmos campos em qualquer nota e em qualquer mercado. Para cada item, \
+devolva:
 
-- product: o nome genérico do produto em português, em minúsculas exceto a primeira \
-letra, no singular, SEM marca, SEM tamanho e SEM sabor/variante. Use sempre o nome mais \
-comum, para que o mesmo produto receba o mesmo nome em qualquer nota: "Chocolate ao \
-leite", "Energético", "Leite condensado", "Pão francês", "Limão".
-- brand: a marca com a grafia oficial ("Lacta", "Itambé", "Coca-Cola"). Marca própria \
-do mercado também conta. null para hortifruti, carne sem marca, pão da casa ou quando \
-não houver marca na descrição.
-- variant: sabor, linha, tipo ou variedade que diferencia produtos de mesmo nome: \
-"Diamante Negro", "Zero", "Sem sal", "Integral", "Taiti", "Prata". null se não houver. \
-Classificação de qualidade ("EXT", "EXTRA", "ESP", "PREMIUM") não é variante: descarte.
+- product: o nome genérico em português, com só a primeira letra maiúscula, no singular, \
+SEM marca, SEM tamanho e SEM sabor/variedade. O que muda a natureza do produto faz parte \
+do nome ("Batata congelada", "Batata palha", "Leite em pó", "Leite condensado", \
+"Azeitona verde"); o que só diferencia versões do mesmo produto vai para variant \
+("Linguiça" + "Mista", nunca "Linguiça mista"). Use sempre o nome mais comum: \
+"Chocolate ao leite", "Energético", "Pão francês", "Biscoito maizena".
+- brand: a marca com a grafia oficial ("Lacta", "Itambé", "Coca-Cola", "Müller"). \
+Marca própria do mercado também conta. Nas descrições, a marca costuma vir abreviada \
+depois do nome (MUL = Müller, PAMP/PAM = Pamplona, SE/SEAR = Seara, SPIT = Sprite, \
+M MAIS = Minas Mais). Se um trecho parece marca e você não a reconhece, use o trecho \
+como está, com só a primeira letra maiúscula ("XAP" → "Xap", "OQ" → "OQ"), e marque \
+confidence "low". null só para hortifruti, carne sem marca, pão da casa ou quando não \
+sobrar nenhum trecho que possa ser marca.
+- variant: o que diferencia produtos de mesmo nome, nesta ordem de prioridade quando \
+houver mais de um (o campo guarda só um):
+  1. espécie da carne em cortes de açougue: "Bovino", "Suíno" (concordando com o \
+produto: "Filé mignon" + "Suíno", "Alcatra" + "Suína", "Chã de fora" + "Bovino"). \
+Marca de suínos (Pamplona) indica carne suína;
+  2. sabor, linha, tipo ou variedade: "Diamante Negro", "Zero", "Sem sal", "Mista", \
+"Uva", "Taiti", "Caturra", "Andrea", "Prata";
+  3. formato: "Pedaço" (PED), "Fatiado".
+  Não são variante: classificação de qualidade ("EXT", "EXTRA", "ESP", "PREMIUM") e \
+descritores genéricos que não distinguem nada ("Original", "100%"). Na dúvida, null.
 - package_size e package_unit: o conteúdo da embalagem quando estiver na descrição \
 ("80G" → 80 g; "1L" → 1 l; "C/4" → 4 un; "1,6KG" → 1.6 kg). Itens vendidos a peso \
 (unidade KG na nota) ficam null: o peso é a quantidade comprada, não a embalagem.
-- category: uma das categorias da lista.
+- category: uma das categorias abaixo.
 - confidence: "high" se a leitura da abreviação é segura; "medium" se é provável; \
-"low" se a abreviação é ambígua e o nome pode estar errado. Prefira "low" a um \
+"low" se a abreviação é ambígua e algum campo pode estar errado. Prefira "low" a um \
 palpite confiante: o usuário revisa os itens marcados.
 
-O EAN, quando informado, identifica o produto, mas não tente adivinhar o produto pelo \
-número: use a descrição. Devolva exatamente um resultado por item, com o mesmo index.
+Siglas no fim da descrição que indicam embalagem ou unidade de venda (BJ = bandeja, \
+PT = pacote, TP, UN, CX, VD, FR, LT, KG) não são marca nem variante. O EAN, quando \
+informado, identifica o produto, mas não tente adivinhar o produto pelo número: use a \
+descrição. Devolva exatamente um resultado por item, com o mesmo index.
 
 Exemplos (descrição → product | brand | variant | embalagem | category):
-- "CHO.LACT.DI.N.80G" → Chocolate ao leite | Lacta | Diamante Negro | 80 g | Mercearia
+- "CHO.LACT.DI.N.80G" → Chocolate ao leite | Lacta | Diamante Negro | 80 g | Doces
 - "AG TON SCHW ZERO 350" → Água tônica | Schweppes | Zero | 350 ml | Bebidas
-- "LTE COND PIRAC 395G" → Leite condensado | Piracanjuba | null | 395 g | Mercearia
-- "LIMAO THAITI EX.kg" → Limão | null | Taiti | null | Hortifruti
+- "QJO.PED.MUS.MUL.kg" → Queijo muçarela | Müller | Pedaço | null | Frios e laticínios
+- "FIL.MIG.S.T.PAM.kg" → Filé mignon | Pamplona | Suíno | null | Açougue e peixaria
+- "FI.PE.FG.SE.1KG BJ" → Filé de peito de frango | Seara | null | 1 kg | Açougue e peixaria
+- "LING.MISTA PERD.kg" → Linguiça | Perdigão | Mista | null | Açougue e peixaria
+- "BATATA CON.UAI 2KG" → Batata congelada | Uai | null | 2 kg | Congelados
+- "ACUCA.CR.LACUC.2KG" → Açúcar | Laçucar | Cristal | 2 kg | Básicos
+- "TOMATE ANDR.EXT.kg" → Tomate | null | Andrea | null | Hortifruti
 - "PAO FR.ASS.kg" → Pão francês | null | null | null | Padaria
 
-Categorias: ${CATEGORIES.join(", ")}.`;
+Categorias:
+- Hortifruti: frutas, legumes e verduras (ovos vão para Mercearia).
+- Açougue e peixaria: carnes, aves, peixes e linguiças, frescos ou congelados.
+- Frios e laticínios: queijos, requeijão, iogurte, manteiga, margarina, presunto.
+- Padaria: pães, bolos e salgados de padaria.
+- Básicos: arroz, feijão, açúcar, sal, farinhas, óleo, café, macarrão.
+- Mercearia: os demais industrializados de despensa: molhos, conservas, enlatados, \
+temperos, biscoitos, salgadinhos, leite em pó, leite condensado, creme de leite, ovos.
+- Doces: chocolates, balas, confeitos, paçoca, doces em geral.
+- Bebidas: água, sucos, refrigerantes, isotônicos, energéticos, cerveja sem álcool.
+- Bebidas alcoólicas: cerveja, vinho, destilados.
+- Congelados: pratos e alimentos prontos congelados (batata congelada, pizza, sorvete). \
+Carne e frango congelados vão para Açougue e peixaria.
+- Limpeza, Higiene e beleza, Bebê, Pet, Utilidades e bazar: pelo nome.
+- Outros: só se nada acima servir.`;
 
 /** Onde ficam as interpretações já confirmadas pelo usuário (preenchida na Fase 5/6). */
 export interface InterpretationMemory {

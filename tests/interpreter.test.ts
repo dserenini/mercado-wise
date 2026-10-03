@@ -1,7 +1,11 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
-import type { ItemInterpreted } from "../src/schemas/interpretation.js";
 import {
+  CATEGORIES,
+  type ItemInterpreted,
+} from "../src/schemas/interpretation.js";
+import {
+  INTERPRET_PROMPT,
   INTERPRET_PROMPT_VERSION,
   type InterpretationMemory,
   InterpretError,
@@ -132,5 +136,13 @@ describe("interpretItems", () => {
     await expect(interpretItems(items, store, { client })).rejects.toThrow(
       InterpretError,
     );
+  });
+});
+
+describe("INTERPRET_PROMPT", () => {
+  it("define cada categoria do schema", () => {
+    for (const category of CATEGORIES) {
+      expect(INTERPRET_PROMPT).toContain(category);
+    }
   });
 });
