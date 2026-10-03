@@ -1,6 +1,7 @@
 import { toCents } from "../lib/money.js";
 import type { ItemInterpreted } from "../schemas/interpretation.js";
 import type { ReceiptRead } from "../schemas/receipt.js";
+import type { PreparedImage } from "../services/image.js";
 import type { InterpretedItem } from "../services/interpreter.js";
 import type { PipelineResult } from "../services/pipeline.js";
 import {
@@ -28,20 +29,18 @@ export interface DraftInput {
   validation: ReceiptValidation;
   interpreted: (InterpretedItem | null)[];
   calls: { read: CallInfo | null; interpret: CallInfo | null };
-  imagePath?: string | null;
+  /** foto já preparada (reduzida, JPEG); guardada em app.receipt_images */
+  image?: PreparedImage | null;
   source?: "photo" | "legacy";
 }
 
-export function draftFromPipeline(
-  result: PipelineResult,
-  imagePath: string | null,
-): DraftInput {
-  const { read, validation, interpretation } = result;
+export function draftFromPipeline(result: PipelineResult): DraftInput {
+  const { image, read, validation, interpretation } = result;
   return {
     receipt: read.receipt,
     validation,
     interpreted: interpretation.items,
-    imagePath,
+    image,
     calls: {
       read: { ...read, payload: read.receipt },
       interpret: interpretation.call && {
@@ -62,8 +61,8 @@ export async function saveDraft(db: Db, input: DraftInput): Promise<number> {
       `insert into app.receipts
          (source, store_name, store_cnpj, store_address, access_key, purchase_date,
           purchase_time, items_count, gross_total_cents, discount_total_cents,
-          total_cents, payment_method, image_path, traffic_light)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          total_cents, payment_method, traffic_light)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        returning id`,
       [
         input.source ?? "photo",
@@ -78,7 +77,6 @@ export async function saveDraft(db: Db, input: DraftInput): Promise<number> {
         cents(r.discount_total),
         cents(r.total),
         r.payment_method,
-        input.imagePath ?? null,
         validation.trafficLight,
       ],
     );
@@ -94,7 +92,7 @@ export async function saveDraft(db: Db, input: DraftInput): Promise<number> {
             package_size, package_unit, category, confidence, interpretation_source,
             check_status, check_problems)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-                 $17, $18, $19, $20::jsonb)`,
+                 $17, $18, $19, $20::text::jsonb)`,
         [
           row.id,
           position,
@@ -120,13 +118,22 @@ export async function saveDraft(db: Db, input: DraftInput): Promise<number> {
       );
     }
 
+    if (input.image) {
+      const { data, mediaType, width, height } = input.image;
+      await tx.query(
+        `insert into app.receipt_images (receipt_id, media_type, width, height, data)
+         values ($1, $2, $3, $4, $5)`,
+        [row.id, mediaType, width, height, data],
+      );
+    }
+
     for (const [stage, call] of Object.entries(input.calls)) {
       if (!call) continue;
       await tx.query(
         `insert into app.extractions
            (receipt_id, stage, model, prompt_version, payload, input_tokens,
             output_tokens, latency_ms)
-         values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)`,
+         values ($1, $2, $3, $4, $5::text::jsonb, $6, $7, $8)`,
         [
           row.id,
           stage,
@@ -167,7 +174,7 @@ export interface ReceiptRow {
   discount_total_cents: number | null;
   total_cents: number | null;
   payment_method: string | null;
-  image_path: string | null;
+  has_image: boolean;
   traffic_light: "green" | "yellow" | "red" | null;
   created_at: Date;
   confirmed_at: Date | null;
@@ -202,8 +209,10 @@ export interface ItemRow {
 const RECEIPT_COLUMNS = `id, status, source, store_name, store_cnpj, store_address,
   access_key, purchase_date::text as purchase_date,
   to_char(purchase_time, 'HH24:MI') as purchase_time, items_count, gross_total_cents,
-  discount_total_cents, total_cents, payment_method, image_path, traffic_light,
-  created_at, confirmed_at`;
+  discount_total_cents, total_cents, payment_method, traffic_light, created_at,
+  confirmed_at,
+  exists (select 1 from app.receipt_images i where i.receipt_id = app.receipts.id)
+    as has_image`;
 
 export async function getReceipt(
   db: Db,
@@ -258,6 +267,17 @@ export async function findReceiptByAccessKey(
   return row ?? null;
 }
 
+export async function getReceiptImage(
+  db: Db,
+  receiptId: number,
+): Promise<{ mediaType: string; data: Uint8Array } | null> {
+  const [row] = await db.query<{ media_type: string; data: Uint8Array }>(
+    "select media_type, data from app.receipt_images where receipt_id = $1",
+    [receiptId],
+  );
+  return row ? { mediaType: row.media_type, data: row.data } : null;
+}
+
 export async function deleteReceipt(db: Db, id: number): Promise<boolean> {
   const rows = await db.query(
     "delete from app.receipts where id = $1 returning id",
@@ -298,6 +318,14 @@ const COMPARED_FIELDS = [
   "category",
 ] as const;
 
+/** Campos do cabeçalho que a revisão pode corrigir. */
+export interface ConfirmedHeader {
+  store_name: string | null;
+  purchase_date: string | null; // AAAA-MM-DD
+  total_cents: number | null;
+  payment_method: string | null;
+}
+
 /**
  * Substitui os itens do rascunho pela versão revisada (o usuário pode corrigir,
  * incluir e remover itens), marca a nota como confirmada e ensina a memória:
@@ -307,6 +335,7 @@ export async function confirmReceipt(
   db: Db,
   id: number,
   items: ConfirmedItem[],
+  header?: ConfirmedHeader,
 ): Promise<void> {
   await db.transaction(async (tx) => {
     const [receipt] = await tx.query<{
@@ -353,7 +382,7 @@ export async function confirmReceipt(
             package_size, package_unit, category, confidence, interpretation_source,
             product_id, check_status, check_problems, edited_by_user)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-                 $17, $18, $19, $20, $21::jsonb, $22)`,
+                 $17, $18, $19, $20, $21::text::jsonb, $22)`,
         [
           id,
           position,
@@ -381,6 +410,20 @@ export async function confirmReceipt(
       );
     }
 
+    if (header) {
+      await tx.query(
+        `update app.receipts set store_name = $2, purchase_date = $3, total_cents = $4,
+                payment_method = $5
+          where id = $1`,
+        [
+          id,
+          header.store_name,
+          header.purchase_date,
+          header.total_cents,
+          header.payment_method,
+        ],
+      );
+    }
     await tx.query(
       "update app.receipts set status = 'confirmed', confirmed_at = now() where id = $1",
       [id],

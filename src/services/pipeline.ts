@@ -1,4 +1,4 @@
-import { prepareImage } from "./image.js";
+import { type PreparedImage, prepareImage } from "./image.js";
 import {
   type InterpretationMemory,
   type InterpretResult,
@@ -7,35 +7,44 @@ import {
 import { type ReadResult, readReceipt } from "./reader.js";
 import { type ReceiptValidation, validateReceipt } from "./validators.js";
 
-export interface PipelineResult {
-  image: { width: number; height: number };
+export interface PhotoRead {
+  image: PreparedImage;
   read: ReadResult;
+}
+
+export interface PipelineResult extends PhotoRead {
   validation: ReceiptValidation;
   interpretation: InterpretResult;
 }
 
-/**
- * Foto → ler → validar → interpretar. Não grava nada: devolve tudo para quem chamou
- * decidir (a tela de revisão mostra; só a confirmação do usuário grava).
- */
-export async function processReceiptPhoto(
-  photo: Buffer,
-  options: { memory?: InterpretationMemory } = {},
-): Promise<PipelineResult> {
+/** Etapa 1: preparar a foto e ler a nota (uma chamada à IA). */
+export async function readPhoto(photo: Buffer): Promise<PhotoRead> {
   const image = await prepareImage(photo);
   const read = await readReceipt(image);
-  const validation = validateReceipt(read.receipt);
+  return { image, read };
+}
 
+/** Etapas 2 e 3: validar (sem IA) e interpretar (memória primeiro, IA para o resto). */
+export async function completeReading(
+  { image, read }: PhotoRead,
+  options: { memory?: InterpretationMemory } = {},
+): Promise<PipelineResult> {
+  const validation = validateReceipt(read.receipt);
   const { receipt } = read;
   const interpretation =
     receipt.is_receipt && receipt.items.length > 0
       ? await interpretItems(receipt.items, receipt.store, options)
       : { items: [], call: null };
+  return { image, read, validation, interpretation };
+}
 
-  return {
-    image: { width: image.width, height: image.height },
-    read,
-    validation,
-    interpretation,
-  };
+/**
+ * Foto → ler → validar → interpretar. Não grava nada: quem chama decide (a tela de
+ * revisão mostra; só a confirmação do usuário grava).
+ */
+export async function processReceiptPhoto(
+  photo: Buffer,
+  options: { memory?: InterpretationMemory } = {},
+): Promise<PipelineResult> {
+  return completeReading(await readPhoto(photo), options);
 }

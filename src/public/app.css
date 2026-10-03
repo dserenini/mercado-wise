@@ -1,0 +1,194 @@
+/* Ajustes por cima do Pico.css. Pensado primeiro para o celular. */
+:root {
+  --mw-ok: #2e7d32;
+  --mw-warn: #b26a00;
+  --mw-bad: #c62828;
+}
+
+header nav {
+  padding-block: 0.25rem;
+}
+header nav .brand {
+  text-decoration: none;
+}
+form.inline {
+  margin: 0;
+}
+form.inline button {
+  margin: 0;
+  padding: 0.4rem 0.8rem;
+}
+.narrow {
+  max-width: 28rem;
+  margin-inline: auto;
+}
+.muted {
+  color: var(--pico-muted-color);
+}
+.error-box {
+  border-left: 4px solid var(--mw-bad);
+  padding: 0.75rem 1rem;
+  background: color-mix(in srgb, var(--mw-bad) 8%, transparent);
+}
+.danger {
+  --pico-color: var(--mw-bad);
+  --pico-border-color: var(--mw-bad);
+}
+
+/* Lista */
+.receipt-row {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+.receipt-row article {
+  margin-bottom: 0.75rem;
+  padding: 0.9rem 1rem;
+}
+.row-head,
+.row-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.row-meta {
+  color: var(--pico-muted-color);
+  font-size: 0.9em;
+  margin-top: 0.25rem;
+}
+.badge {
+  font-size: 0.8em;
+  padding: 0.05rem 0.5rem;
+  border-radius: 1rem;
+  border: 1px solid currentColor;
+}
+.badge.draft {
+  color: var(--mw-warn);
+}
+.badge.done {
+  color: var(--mw-ok);
+}
+
+/* Upload */
+.file-button {
+  display: block;
+  text-align: center;
+  padding: 1.25rem;
+  font-size: 1.1em;
+  position: relative;
+}
+.file-button input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+form[aria-busy="true"] .file-button {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* Revisão */
+.photo img {
+  max-width: 100%;
+  border-radius: var(--pico-border-radius);
+}
+details.item {
+  border: 1px solid var(--pico-muted-border-color);
+  border-left-width: 4px;
+  border-radius: var(--pico-border-radius);
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.6rem;
+}
+details.item > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  list-style: none;
+}
+details.item > summary::after {
+  display: none;
+}
+.item-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.item-title small {
+  color: var(--pico-muted-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.item-total {
+  white-space: nowrap;
+}
+.item-status {
+  font-weight: bold;
+  width: 1.2em;
+  text-align: center;
+}
+.status-ok {
+  border-left-color: var(--mw-ok);
+}
+.status-warning {
+  border-left-color: var(--mw-warn);
+}
+.status-error,
+.line-mismatch {
+  border-left-color: var(--mw-bad);
+}
+.line-mismatch [data-line-total] {
+  border-color: var(--mw-bad);
+}
+.problems {
+  margin: 0.5rem 0;
+  padding-left: 1.1rem;
+  font-size: 0.9em;
+}
+.problems .error {
+  color: var(--mw-bad);
+}
+.problems .warning {
+  color: var(--mw-warn);
+}
+details.item fieldset {
+  margin: 0.75rem 0 0;
+}
+details.item legend {
+  font-weight: bold;
+  font-size: 0.9em;
+}
+.grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (max-width: 576px) {
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 0.75rem;
+  }
+}
+
+.totals-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.9rem;
+  margin: 1rem 0;
+  border-radius: var(--pico-border-radius);
+  background: var(--pico-card-background-color);
+  box-shadow: var(--pico-card-box-shadow);
+  font-size: 0.95em;
+}
+.totals-bar.ok [data-diff] {
+  color: var(--mw-ok);
+}
+.totals-bar.bad [data-diff] {
+  color: var(--mw-bad);
+}

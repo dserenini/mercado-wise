@@ -14,6 +14,9 @@ const EnvSchema = z.object({
   // Postgres do Supabase pelo "Transaction pooler" (porta 6543). Opcional aqui para
   // que testes e scripts sem banco rodem sem ela; quem usa o banco exige (db/connect).
   DATABASE_URL: z.url().optional(),
+  // Login do app (npm run setup-login gera as duas). Exigidas só pelo servidor web.
+  APP_PASSWORD_HASH: z.string().startsWith("scrypt:").optional(),
+  SESSION_SECRET: z.string().min(32).optional(),
   READER_MODEL: z.string().default("claude-sonnet-5-5"),
   READER_EFFORT: Effort.default("high"),
   INTERPRETER_MODEL: z.string().default("claude-sonnet-5-5"),

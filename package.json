@@ -22,11 +22,17 @@
     "migrate": "tsx scripts/migrate.ts",
     "ingest": "tsx scripts/ingest.ts",
     "import-saved": "tsx scripts/import-saved.ts",
-    "seed-memory": "tsx scripts/seed-memory.ts"
+    "seed-memory": "tsx scripts/seed-memory.ts",
+    "setup-login": "tsx scripts/setup-login.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
+    "@picocss/pico": "^2.1.1",
+    "cookie-session": "^2.1.1",
+    "ejs": "^6.0.1",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "multer": "^2.4.0",
     "postgres": "^3.4.9",
     "sharp": "^0.35.5",
     "zod": "^4.6.5"
@@ -34,7 +40,10 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
     "@electric-sql/pglite": "^0.5.8",
+    "@types/cookie-session": "^2.0.49",
+    "@types/ejs": "^3.1.5",
     "@types/express": "^5.0.6",
+    "@types/multer": "^2.3.0",
     "@types/node": "^24.19.1",
     "@types/supertest": "^7.2.1",
     "supertest": "^7.3.1",

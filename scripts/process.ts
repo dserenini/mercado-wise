@@ -12,7 +12,14 @@ if (!path) {
 }
 
 const result = await processReceiptPhoto(await readFile(path));
-console.log(JSON.stringify(result, null, 2));
+const { image, ...rest } = result;
+console.log(
+  JSON.stringify(
+    { image: { width: image.width, height: image.height }, ...rest },
+    null,
+    2,
+  ),
+);
 
 const { read, validation, interpretation } = result;
 console.error(formatItems(read.receipt.items, interpretation.items));

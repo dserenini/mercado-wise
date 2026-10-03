@@ -1,0 +1,24 @@
+<%- include("partials/top", { title: "Notas" }) %>
+<h1>Notas</h1>
+<% if (receipts.length === 0) { %>
+  <p>Nenhuma nota ainda. <a href="/receipts/new">Envie a primeira</a>.</p>
+<% } %>
+<% for (const r of receipts) { %>
+  <a href="/receipts/<%= r.id %>" class="receipt-row">
+    <article>
+      <div class="row-head">
+        <strong><%= r.store_name || "Mercado não identificado" %></strong>
+        <span><%= r.total_cents === null ? "—" : formatCents(r.total_cents) %></span>
+      </div>
+      <div class="row-meta">
+        <span><%= r.purchase_date ? r.purchase_date.split("-").reverse().join("/") : "sem data" %> · <%= r.item_lines %> itens</span>
+        <% if (r.status === "draft") { %>
+          <span class="badge draft">revisar</span> <%- include("partials/light", { light: r.traffic_light }) %>
+        <% } else { %>
+          <span class="badge done">confirmada</span>
+        <% } %>
+      </div>
+    </article>
+  </a>
+<% } %>
+<%- include("partials/bottom") %>

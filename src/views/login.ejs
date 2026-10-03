@@ -1,0 +1,14 @@
+<%- include("partials/top", { title: "Entrar", hideNav: true }) %>
+<article class="narrow">
+  <h1>mercado-wise</h1>
+  <form method="post" action="/login">
+    <label>
+      Senha
+      <input type="password" name="password" autocomplete="current-password" required autofocus
+        <% if (error) { %>aria-invalid="true"<% } %>>
+      <% if (error) { %><small><%= error %></small><% } %>
+    </label>
+    <button type="submit">Entrar</button>
+  </form>
+</article>
+<%- include("partials/bottom") %>
