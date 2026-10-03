@@ -2,8 +2,8 @@
 
 Foto da nota fiscal → leitura → interpretação → banco. Node + TypeScript.
 
-Reconstrução em andamento na branch `rebuild`. O app antigo (Python + React)
-está na tag `legacy-v0`.
+No ar em **https://mercado-wise.vercel.app**. O app antigo (Python + React) está
+na tag `legacy-v0`.
 
 ## Como funciona
 
@@ -55,3 +55,17 @@ npm run seed-memory -- gabarito.json         # gabarito revisado → memória (s
 
 Fotos de notas reais ficam em `eval/fixtures/`, resultados em `eval/out/` e o
 gabarito em `eval/ground-truth/` — tudo fora do git.
+
+## Deploy
+
+Vercel, integrada ao GitHub: cada push na `main` publica em produção; outras
+branches geram um deploy de preview.
+
+- Entrada: [src/index.ts](src/index.ts) (a Vercel exige que ele importe o `express`).
+- Estáticos: `public/` (servidos pela CDN; `express.static` só vale localmente).
+- [vercel.json](vercel.json): região `gru1` (São Paulo, junto do Supabase) e as telas
+  EJS incluídas na função.
+- Variáveis no painel da Vercel: `ANTHROPIC_API_KEY`, `DATABASE_URL`,
+  `APP_PASSWORD_HASH`, `SESSION_SECRET`.
+- Migrations rodam à mão (`npm run migrate`), antes do push que depende delas.
+- TypeScript fica na 6.x: o builder da Vercel não transpila com o TypeScript 7.
