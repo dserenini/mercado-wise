@@ -82,7 +82,7 @@ describe("interpretItems", () => {
 
   it("usa a memória e só pergunta à IA o que falta", async () => {
     const memory: InterpretationMemory = {
-      find: (it) => (it.store_code === "32845" ? limao : null),
+      find: async (it) => (it.store_code === "32845" ? limao : null),
     };
     const { parse, client } = fakeClient({ items: [{ index: 0, ...tonica }] });
 
@@ -95,7 +95,7 @@ describe("interpretItems", () => {
   });
 
   it("não chama a API quando tudo vem da memória", async () => {
-    const memory: InterpretationMemory = { find: () => tonica };
+    const memory: InterpretationMemory = { find: async () => tonica };
     const { parse, client } = fakeClient(null);
 
     const result = await interpretItems(items, store, { client, memory });

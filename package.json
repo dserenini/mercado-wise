@@ -18,16 +18,22 @@
     "read": "tsx scripts/read.ts",
     "validate": "tsx scripts/validate.ts",
     "interpret": "tsx scripts/interpret.ts",
-    "process": "tsx scripts/process.ts"
+    "process": "tsx scripts/process.ts",
+    "migrate": "tsx scripts/migrate.ts",
+    "ingest": "tsx scripts/ingest.ts",
+    "import-saved": "tsx scripts/import-saved.ts",
+    "seed-memory": "tsx scripts/seed-memory.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
     "express": "^5.2.1",
+    "postgres": "^3.4.9",
     "sharp": "^0.35.5",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
+    "@electric-sql/pglite": "^0.5.8",
     "@types/express": "^5.0.6",
     "@types/node": "^24.19.1",
     "@types/supertest": "^7.2.1",

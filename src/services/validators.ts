@@ -27,6 +27,16 @@ export function isValidGtin(code: string): boolean {
   return (10 - (sum % 10)) % 10 === check;
 }
 
+/**
+ * EAN atribuído pelo fabricante (vale em qualquer mercado). Códigos que começam com 2
+ * são gerados pela balança do próprio mercado, com peso ou preço embutido: mudam a
+ * cada etiqueta e não identificam o produto.
+ */
+export function isManufacturerEan(code: string): boolean {
+  if (!isValidGtin(code)) return false;
+  return !((code.length === 12 || code.length === 13) && code.startsWith("2"));
+}
+
 /** CNPJ: 14 dígitos, os dois últimos são DVs por módulo 11 com pesos 2..9 cíclicos. */
 export function isValidCnpj(cnpj: string): boolean {
   if (!/^\d{14}$/.test(cnpj) || /^(\d)\1{13}$/.test(cnpj)) return false;

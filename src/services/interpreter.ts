@@ -109,10 +109,10 @@ Carne e frango congelados vão para Açougue e peixaria.
 
 /** Onde ficam as interpretações já confirmadas pelo usuário (preenchida na Fase 5/6). */
 export interface InterpretationMemory {
-  find(item: ItemRead, store: StoreContext): ItemInterpreted | null;
+  find(item: ItemRead, store: StoreContext): Promise<ItemInterpreted | null>;
 }
 
-export const emptyMemory: InterpretationMemory = { find: () => null };
+export const emptyMemory: InterpretationMemory = { find: async () => null };
 
 export interface StoreContext {
   name: string | null;
@@ -160,11 +160,16 @@ export async function interpretItems(
   const result: (InterpretedItem | null)[] = items.map(() => null);
 
   // 1) Memória primeiro: o que já foi confirmado não passa pela IA de novo.
+  const remembered = await Promise.all(
+    items.map((item) =>
+      item.raw_description === null ? null : memory.find(item, store),
+    ),
+  );
   const pending: { index: number; item: ItemRead }[] = [];
   items.forEach((item, index) => {
     if (item.raw_description === null) return;
-    const remembered = memory.find(item, store);
-    if (remembered) result[index] = { ...remembered, source: "memory" };
+    const found = remembered[index];
+    if (found) result[index] = { ...found, source: "memory" };
     else pending.push({ index, item });
   });
   if (pending.length === 0) return { items: result, call: null };
