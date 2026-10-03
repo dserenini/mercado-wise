@@ -30,7 +30,9 @@ do nome ("Batata congelada", "Batata palha", "Leite em pó", "Leite condensado",
 "Azeitona verde"); o que só diferencia versões do mesmo produto vai para variant \
 ("Linguiça" + "Mista", "Biscoito" + "Maizena", "Biscoito" + "Rosquinha"; nunca \
 "Linguiça mista" ou "Biscoito maizena"). Use sempre o nome mais comum: \
-"Chocolate ao leite", "Energético", "Pão francês".
+"Chocolate ao leite", "Energético", "Pão francês", "Isotônico", "Azeite", \
+"Requeijão", "Limpador" + "Cremoso", "Tapioca" + "Hidratada". Exceção ao singular: \
+"Ovos".
 - brand: a marca com a grafia oficial ("Lacta", "Itambé", "Coca-Cola", "Müller"). \
 Marca própria do mercado também conta. Nas descrições, a marca costuma vir abreviada \
 depois do nome. Reconheça-a usando o que você sabe das marcas típicas DAQUELE produto \
@@ -67,7 +69,8 @@ Mantenha o tipo de produto que a abreviação indica; não troque por um produto
 (MOL = molho, não ketchup). Item vendido por kg com classificação EX/EXT/ESP no nome \
 quase sempre é hortifruti: leia a abreviação como fruta, legume ou verdura. \
 Siglas no fim da descrição que indicam embalagem ou unidade de venda (BJ = bandeja, \
-PT = pacote, TP, UN, CX, VD, FR, LT, KG) não são marca nem variante. O EAN, quando \
+PT = pacote, TP, UN, CX, VD, FR, LT, KG) não são marca nem variante, nem embalagem: \
+alface vendida por "UN" fica com embalagem null. O EAN, quando \
 informado, identifica o produto, mas não tente adivinhar o produto pelo número: use a \
 descrição. Devolva exatamente um resultado por item, com o mesmo index.
 
@@ -90,7 +93,7 @@ Categorias:
 - Açougue e peixaria: carnes, aves, peixes e linguiças, frescos ou congelados.
 - Frios e laticínios: queijos, requeijão, iogurte, manteiga, margarina, presunto.
 - Padaria: pães, bolos e salgados de padaria.
-- Básicos: arroz, feijão, açúcar, sal, farinhas, óleo, café, macarrão.
+- Básicos: arroz, feijão, açúcar, sal, farinhas, tapioca, óleo, café, macarrão.
 - Mercearia: os demais industrializados de despensa: molhos, conservas, enlatados, \
 temperos, biscoitos, salgadinhos, leite em pó, leite condensado, creme de leite, ovos.
 - Doces: chocolates, balas, confeitos, paçoca, doces em geral.
