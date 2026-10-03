@@ -26,8 +26,9 @@ devolva:
 SEM marca, SEM tamanho e SEM sabor/variedade. O que muda a natureza do produto faz parte \
 do nome ("Batata congelada", "Batata palha", "Leite em pó", "Leite condensado", \
 "Azeitona verde"); o que só diferencia versões do mesmo produto vai para variant \
-("Linguiça" + "Mista", nunca "Linguiça mista"). Use sempre o nome mais comum: \
-"Chocolate ao leite", "Energético", "Pão francês", "Biscoito maizena".
+("Linguiça" + "Mista", "Biscoito" + "Maizena", "Biscoito" + "Rosquinha"; nunca \
+"Linguiça mista" ou "Biscoito maizena"). Use sempre o nome mais comum: \
+"Chocolate ao leite", "Energético", "Pão francês".
 - brand: a marca com a grafia oficial ("Lacta", "Itambé", "Coca-Cola", "Müller"). \
 Marca própria do mercado também conta. Nas descrições, a marca costuma vir abreviada \
 depois do nome (MUL = Müller, PAMP/PAM = Pamplona, SE/SEAR = Seara, SPIT = Sprite, \
@@ -38,7 +39,8 @@ sobrar nenhum trecho que possa ser marca.
 - variant: o que diferencia produtos de mesmo nome, nesta ordem de prioridade quando \
 houver mais de um (o campo guarda só um):
   1. espécie da carne em cortes de açougue: "Bovino", "Suíno" (concordando com o \
-produto: "Filé mignon" + "Suíno", "Alcatra" + "Suína", "Chã de fora" + "Bovino"). \
+produto: "Filé mignon" + "Suíno", "Alcatra" + "Bovina", "Alcatra" + "Suína", \
+"Chã de fora" + "Bovino"). \
 Marca de suínos (Pamplona) indica carne suína;
   2. sabor, linha, tipo ou variedade: "Diamante Negro", "Zero", "Sem sal", "Mista", \
 "Uva", "Taiti", "Caturra", "Andrea", "Prata";
@@ -65,6 +67,7 @@ Exemplos (descrição → product | brand | variant | embalagem | category):
 - "FIL.MIG.S.T.PAM.kg" → Filé mignon | Pamplona | Suíno | null | Açougue e peixaria
 - "FI.PE.FG.SE.1KG BJ" → Filé de peito de frango | Seara | null | 1 kg | Açougue e peixaria
 - "LING.MISTA PERD.kg" → Linguiça | Perdigão | Mista | null | Açougue e peixaria
+- "BISC MABEL ROSQ 500G" → Biscoito | Mabel | Rosquinha | 500 g | Mercearia
 - "BATATA CON.UAI 2KG" → Batata congelada | Uai | null | 2 kg | Congelados
 - "ACUCA.CR.LACUC.2KG" → Açúcar | Laçucar | Cristal | 2 kg | Básicos
 - "TOMATE ANDR.EXT.kg" → Tomate | null | Andrea | null | Hortifruti
