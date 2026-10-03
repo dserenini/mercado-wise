@@ -10,7 +10,9 @@ import type { ItemRead } from "../schemas/receipt.js";
 import { claudeClient } from "./claude.js";
 
 // v2: ajustada com a revisão manual de 168 itens (eval/ground-truth/interpretation-v1.json).
-export const INTERPRET_PROMPT_VERSION = "interpret-v2";
+// v3: marca reconhecida pelo conhecimento das marcas típicas do produto (a v2 copiava o
+// trecho), espécie sempre na variante (inclusive frango), sem trocar o tipo de produto.
+export const INTERPRET_PROMPT_VERSION = "interpret-v3";
 
 // Ponto de partida: legacy-v0 backend/app/services/ai_normalizer.py. Mudança principal:
 // o antigo apagava sabor/variante ("Monster Ultra" → "Energético Monster"); aqui a
@@ -31,19 +33,23 @@ do nome ("Batata congelada", "Batata palha", "Leite em pó", "Leite condensado",
 "Chocolate ao leite", "Energético", "Pão francês".
 - brand: a marca com a grafia oficial ("Lacta", "Itambé", "Coca-Cola", "Müller"). \
 Marca própria do mercado também conta. Nas descrições, a marca costuma vir abreviada \
-depois do nome (MUL = Müller, PAMP/PAM = Pamplona, SE/SEAR = Seara, SPIT = Sprite, \
-M MAIS = Minas Mais). Se um trecho parece marca e você não a reconhece, use o trecho \
-como está, com só a primeira letra maiúscula ("XAP" → "Xap", "OQ" → "OQ"), e marque \
-confidence "low". null só para hortifruti, carne sem marca, pão da casa ou quando não \
-sobrar nenhum trecho que possa ser marca.
+depois do nome. Reconheça-a usando o que você sabe das marcas típicas DAQUELE produto \
+no Brasil: o trecho abreviado + o tipo de produto quase sempre bastam ("CAFE PIL" → \
+Pilão; "MAC ADRIA" → Adria; "REFRI GUAR ANT" → Antarctica; MUL = Müller, PAMP/PAM = \
+Pamplona, SE/SEAR = Seara, SPIT = Sprite, M MAIS = Minas Mais). Só quando nenhuma \
+marca conhecida combinar com o trecho e com o produto, use o trecho como está, com só \
+a primeira letra maiúscula ("XAP" → "Xap"), e marque confidence "low". Nunca invente \
+marca a partir de uma letra solta nem inclua marca que não esteja indicada na \
+descrição. null para hortifruti, carne sem marca, pão da casa ou quando não houver \
+trecho de marca.
 - variant: o que diferencia produtos de mesmo nome. Quando houver tipo e sabor ao \
 mesmo tempo, junte os dois, tipo primeiro e só a primeira letra maiúscula: \
 "Maizena chocolate", "Rosquinha coco". Fora isso, siga esta ordem de prioridade \
 quando houver mais de uma opção:
-  1. espécie da carne em cortes de açougue: "Bovino", "Suíno" (concordando com o \
-produto: "Filé mignon" + "Suíno", "Alcatra" + "Bovina", "Alcatra" + "Suína", \
-"Chã de fora" + "Bovino"). \
-Marca de suínos (Pamplona) indica carne suína;
+  1. espécie em carnes e aves: "Bovino", "Suíno", "Frango", "Peixe" (concordando com o \
+produto: "Filé mignon" + "Suíno", "Alcatra" + "Bovina", "Filé de peito" + "Frango", \
+"Sobrecoxa" + "Frango"). A espécie nunca vai no nome do produto ("Filé de peito", \
+nunca "Filé de peito de frango"). Marca de suínos (Pamplona) indica carne suína;
   2. sabor, linha, tipo ou variedade: "Diamante Negro", "Zero", "Sem sal", "Mista", \
 "Uva", "Taiti", "Caturra", "Andrea", "Prata";
   3. formato: "Pedaço" (PED), "Fatiado".
@@ -57,6 +63,9 @@ descritores genéricos que não distinguem nada ("Original", "100%"). Na dúvida
 "low" se a abreviação é ambígua e algum campo pode estar errado. Prefira "low" a um \
 palpite confiante: o usuário revisa os itens marcados.
 
+Mantenha o tipo de produto que a abreviação indica; não troque por um produto parecido \
+(MOL = molho, não ketchup). Item vendido por kg com classificação EX/EXT/ESP no nome \
+quase sempre é hortifruti: leia a abreviação como fruta, legume ou verdura. \
 Siglas no fim da descrição que indicam embalagem ou unidade de venda (BJ = bandeja, \
 PT = pacote, TP, UN, CX, VD, FR, LT, KG) não são marca nem variante. O EAN, quando \
 informado, identifica o produto, mas não tente adivinhar o produto pelo número: use a \
@@ -67,7 +76,7 @@ Exemplos (descrição → product | brand | variant | embalagem | category):
 - "AG TON SCHW ZERO 350" → Água tônica | Schweppes | Zero | 350 ml | Bebidas
 - "QJO.PED.MUS.MUL.kg" → Queijo muçarela | Müller | Pedaço | null | Frios e laticínios
 - "FIL.MIG.S.T.PAM.kg" → Filé mignon | Pamplona | Suíno | null | Açougue e peixaria
-- "FI.PE.FG.SE.1KG BJ" → Filé de peito de frango | Seara | null | 1 kg | Açougue e peixaria
+- "FI.PE.FG.SE.1KG BJ" → Filé de peito | Seara | Frango | 1 kg | Açougue e peixaria
 - "LING.MISTA PERD.kg" → Linguiça | Perdigão | Mista | null | Açougue e peixaria
 - "BISC MABEL ROSQ 500G" → Biscoito | Mabel | Rosquinha | 500 g | Mercearia
 - "ROSQ.MAB.COCO 500G" → Biscoito | Mabel | Rosquinha coco | 500 g | Mercearia
