@@ -4,7 +4,11 @@ import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/auth/password.js";
 import type { Db } from "../src/db/client.js";
 import { createDbMemory } from "../src/db/memory.js";
-import { getReceipt, saveDraft } from "../src/db/receipts-repo.js";
+import {
+  getReceipt,
+  rememberItem,
+  saveDraft,
+} from "../src/db/receipts-repo.js";
 import type { IngestResult } from "../src/services/ingest.js";
 import { validateReceipt } from "../src/services/validators.js";
 import { testDb } from "./helpers/db.js";
@@ -149,6 +153,32 @@ describe("notas", () => {
       cnpj: null,
     });
     expect(remembered?.variant).toBe("Zero");
+  });
+
+  it("rascunho aberto mostra o que foi confirmado depois em outra nota", async () => {
+    const id = await draft(); // interpretado antes: sem produto
+    // outra nota confirmou o mesmo EAN depois
+    await rememberItem(
+      db,
+      {
+        ...item(),
+        product: "Água tônica",
+        brand: "Schweppes",
+        variant: "Zero",
+        package_size: 350,
+        package_unit: "ml",
+        category: "Bebidas",
+        confidence: "high",
+      },
+      null,
+      "review",
+    );
+    const agent = await loggedIn();
+    const res = await agent.get(`/receipts/${id}`).expect(200);
+    expect(res.text).toContain("Água tônica · Schweppes · Zero");
+    expect(res.text).toContain("AG TON SCHW ZERO 350 · memória");
+    // só mostra: o banco continua com o rascunho original até a confirmação
+    expect((await getReceipt(db, id))?.items[0]?.product).toBeNull();
   });
 
   it("formulário inválido volta para a revisão com os erros", async () => {

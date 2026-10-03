@@ -17,7 +17,7 @@
     <span class="item-status"><%= it && it.check_status ? STATUS[it.check_status] : "+" %></span>
     <span class="item-title">
       <strong><%= summary %></strong>
-      <small><%= it ? (it.raw_description || "descrição ilegível") : "" %></small>
+      <small><%= it ? (it.raw_description || "descrição ilegível") : "" %><% if (it && it.interpretation_source) { %> · <%= SOURCE[it.interpretation_source] || it.interpretation_source %><% } %></small>
     </span>
     <span class="item-total"><small><%= qty %> ×</small> <%= total %></span>
   </summary>

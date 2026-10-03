@@ -9,6 +9,7 @@ import {
   listReceipts,
 } from "../db/receipts-repo.js";
 import { ReadError } from "../services/reader.js";
+import { withMemory } from "../services/review.js";
 import { parseReviewForm } from "./review-form.js";
 
 // Rotas só recebem, chamam serviços/repositório e escolhem a tela. Nada de SQL ou
@@ -69,7 +70,7 @@ export function receiptRoutes({ db, ingest }: AppDeps): Router {
         .render("message", { title: "Nota não encontrada", message: "" });
       return;
     }
-    res.render("review", { ...saved, errors: [] });
+    res.render("review", { ...(await withMemory(db, saved)), errors: [] });
   });
 
   router.get("/receipts/:id/image", async (req, res) => {
@@ -91,7 +92,10 @@ export function receiptRoutes({ db, ingest }: AppDeps): Router {
         res.sendStatus(404);
         return;
       }
-      res.status(400).render("review", { ...saved, errors: form.errors });
+      res.status(400).render("review", {
+        ...(await withMemory(db, saved)),
+        errors: form.errors,
+      });
       return;
     }
     await confirmReceipt(db, id, form.items, form.header);
