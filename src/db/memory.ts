@@ -12,7 +12,7 @@ type ProductRow = Omit<ItemInterpreted, "confidence">;
  * Memória de itens confirmados, na ordem do mais confiável para o menos:
  * 1. EAN do fabricante — vale em qualquer mercado;
  * 2. código interno do mercado (balança/hortifruti) — vale dentro da rede (raiz do CNPJ);
- * 3. descrição crua exatamente igual, dentro da mesma rede.
+ * 3. descrição crua igual (ignorando pontuação e o "kg" do fim), dentro da mesma rede.
  */
 export function createDbMemory(db: Db): InterpretationMemory {
   return {
@@ -41,7 +41,8 @@ export function createDbMemory(db: Db): InterpretationMemory {
         [row] = await db.query<ProductRow>(
           `select ${PRODUCT_FIELDS}
              from app.product_aliases a join app.products p on p.id = a.product_id
-            where a.store_cnpj_root = $1 and a.raw_description = $2`,
+            where a.store_cnpj_root = $1
+              and a.description_key = app.description_key($2)`,
           [cnpjRoot, item.raw_description],
         );
       }

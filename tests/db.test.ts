@@ -265,6 +265,42 @@ describe("confirmReceipt + memória", () => {
     ).toMatchObject({ product: "Linguiça", variant: "Mista" });
   });
 
+  it("casa a descrição ignorando pontuação e o kg do fim", async () => {
+    const pao = item({
+      raw_description: "PAO FR.ASS.",
+      ean: null,
+      store_code: null,
+      quantity: 0.35,
+      unit: "kg",
+      unit_price: 21.8,
+      total_price: 7.63,
+    });
+    const id = await saveDraft(
+      db,
+      draft(receipt({ items: [pao], total: 7.63 })),
+    );
+    await confirmReceipt(db, id, [
+      confirmed(pao, {
+        product: "Pão francês",
+        brand: null,
+        variant: null,
+        package_size: null,
+        package_unit: null,
+        category: "Padaria",
+      }),
+    ]);
+
+    const memory = createDbMemory(db);
+    for (const raw of ["PAO FR.ASS.kg", "PAO FR.ASS", "pao fr ass k"]) {
+      expect(
+        await memory.find({ ...pao, raw_description: raw }, store()),
+      ).toMatchObject({ product: "Pão francês" });
+    }
+    expect(
+      await memory.find({ ...pao, raw_description: "PAO FR.ASS.INT" }, store()),
+    ).toBeNull();
+  });
+
   it("revalida os itens confirmados", async () => {
     const id = await saveDraft(db, draft());
     await confirmReceipt(db, id, [

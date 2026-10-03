@@ -445,7 +445,8 @@ export async function rememberItem(
       `insert into app.product_aliases
          (product_id, store_cnpj_root, raw_description, store_code, source)
        values ($1, $2, $3, $4, $5)
-       on conflict (store_cnpj_root, raw_description) do update set
+       on conflict (store_cnpj_root, description_key) do update set
+         raw_description = excluded.raw_description,
          product_id = excluded.product_id,
          store_code = coalesce(excluded.store_code, app.product_aliases.store_code),
          source = excluded.source, updated_at = now()`,
