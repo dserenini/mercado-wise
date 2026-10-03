@@ -36,8 +36,10 @@ M MAIS = Minas Mais). Se um trecho parece marca e você não a reconhece, use o 
 como está, com só a primeira letra maiúscula ("XAP" → "Xap", "OQ" → "OQ"), e marque \
 confidence "low". null só para hortifruti, carne sem marca, pão da casa ou quando não \
 sobrar nenhum trecho que possa ser marca.
-- variant: o que diferencia produtos de mesmo nome, nesta ordem de prioridade quando \
-houver mais de um (o campo guarda só um):
+- variant: o que diferencia produtos de mesmo nome. Quando houver tipo e sabor ao \
+mesmo tempo, junte os dois, tipo primeiro e só a primeira letra maiúscula: \
+"Maizena chocolate", "Rosquinha coco". Fora isso, siga esta ordem de prioridade \
+quando houver mais de uma opção:
   1. espécie da carne em cortes de açougue: "Bovino", "Suíno" (concordando com o \
 produto: "Filé mignon" + "Suíno", "Alcatra" + "Bovina", "Alcatra" + "Suína", \
 "Chã de fora" + "Bovino"). \
@@ -68,6 +70,7 @@ Exemplos (descrição → product | brand | variant | embalagem | category):
 - "FI.PE.FG.SE.1KG BJ" → Filé de peito de frango | Seara | null | 1 kg | Açougue e peixaria
 - "LING.MISTA PERD.kg" → Linguiça | Perdigão | Mista | null | Açougue e peixaria
 - "BISC MABEL ROSQ 500G" → Biscoito | Mabel | Rosquinha | 500 g | Mercearia
+- "ROSQ.MAB.COCO 500G" → Biscoito | Mabel | Rosquinha coco | 500 g | Mercearia
 - "BATATA CON.UAI 2KG" → Batata congelada | Uai | null | 2 kg | Congelados
 - "ACUCA.CR.LACUC.2KG" → Açúcar | Laçucar | Cristal | 2 kg | Básicos
 - "TOMATE ANDR.EXT.kg" → Tomate | null | Andrea | null | Hortifruti
