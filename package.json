@@ -16,7 +16,9 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "read": "tsx scripts/read.ts",
-    "validate": "tsx scripts/validate.ts"
+    "validate": "tsx scripts/validate.ts",
+    "interpret": "tsx scripts/interpret.ts",
+    "process": "tsx scripts/process.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

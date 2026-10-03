@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { type Config, config } from "../config.js";
 import {
@@ -6,6 +6,7 @@ import {
   type ReceiptRead,
   ReceiptReadSchema,
 } from "../schemas/receipt.js";
+import { claudeClient } from "./claude.js";
 import type { PreparedImage } from "./image.js";
 
 // Suba a versão sempre que mudar o prompt: ela vai para o banco junto com cada
@@ -65,15 +66,12 @@ export class ReadError extends Error {
   override name = "ReadError";
 }
 
-let defaultClient: Anthropic | undefined;
-
 /** Etapa LER: foto → o que está impresso, como ReceiptRead. Não interpreta, não valida. */
 export async function readReceipt(
   image: PreparedImage,
   options: { client?: Anthropic; model?: string; effort?: Effort } = {},
 ): Promise<ReadResult> {
-  defaultClient ??= new Anthropic();
-  const client = options.client ?? defaultClient;
+  const client = options.client ?? claudeClient();
   const model = options.model ?? config.READER_MODEL;
   const effort = options.effort ?? config.READER_EFFORT;
 
