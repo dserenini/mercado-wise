@@ -33,12 +33,19 @@ export function createApp(deps: AppDeps) {
   app.locals.centsToInput = centsToInput;
   app.locals.decimalToInput = decimalToInput;
   app.locals.CATEGORIES = CATEGORIES;
+  // Muda a cada reinício: o navegador baixa CSS/JS novos depois de um deploy.
+  app.locals.assetVersion = Date.now().toString(36);
 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
   });
 
-  app.use("/static", express.static(join(here, "public"), { maxAge: "1h" }));
+  app.use(
+    "/static",
+    express.static(join(here, "public"), {
+      maxAge: deps.secure ? "7d" : 0,
+    }),
+  );
   app.get("/static/pico.min.css", (_req, res) => {
     res.sendFile(
       join(

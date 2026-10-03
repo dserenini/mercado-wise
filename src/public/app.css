@@ -1,5 +1,8 @@
 /* Ajustes por cima do Pico.css. Pensado primeiro para o celular. */
 :root {
+  /* O Pico aumenta a fonte base em telas largas (até 131%); aqui fica fixa em 16px
+     para caber mais informação no monitor. */
+  --pico-font-size: 100%;
   --mw-ok: #2e7d32;
   --mw-warn: #b26a00;
   --mw-bad: #c62828;
@@ -98,8 +101,8 @@ details.item {
   border: 1px solid var(--pico-muted-border-color);
   border-left-width: 4px;
   border-radius: var(--pico-border-radius);
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.6rem;
+  padding: 0.35rem 0.6rem;
+  margin-bottom: 0.4rem;
 }
 details.item > summary {
   display: flex;
@@ -144,7 +147,7 @@ details.item > summary::after {
   border-color: var(--mw-bad);
 }
 .problems {
-  margin: 0.5rem 0;
+  margin: 0.35rem 0 0;
   padding-left: 1.1rem;
   font-size: 0.9em;
 }
@@ -154,21 +157,76 @@ details.item > summary::after {
 .problems .warning {
   color: var(--mw-warn);
 }
-details.item fieldset {
-  margin: 0.75rem 0 0;
+/* Campos do item: grade compacta (12 colunas no computador, 4 no celular). */
+details.item {
+  font-size: 0.85rem;
+  --pico-form-element-spacing-vertical: 0.3rem;
+  --pico-form-element-spacing-horizontal: 0.5rem;
 }
-details.item legend {
-  font-weight: bold;
-  font-size: 0.9em;
+.fields {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 0.35rem 0.5rem;
+  margin-top: 0.5rem;
 }
-.grid-4 {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.fields label {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: var(--pico-muted-color);
+}
+/* details.item na frente: precisa vencer a altura que o Pico define para campos. */
+details.item .fields input,
+details.item .fields select {
+  margin: 0.1rem 0 0;
+  height: 2rem;
+  padding-block: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--pico-color);
+}
+details.item .fields select {
+  padding-right: 1.75rem;
+}
+.field-actions {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+.field-actions [data-remove] {
+  margin: 0;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+}
+.d-2 {
+  grid-column: span 2;
+}
+.d-3 {
+  grid-column: span 3;
+}
+.d-4 {
+  grid-column: span 4;
+}
+.d-5 {
+  grid-column: span 5;
+}
+.d-6 {
+  grid-column: span 6;
 }
 @media (max-width: 576px) {
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0 0.75rem;
+  .fields {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .m-1 {
+    grid-column: span 1;
+  }
+  .m-2 {
+    grid-column: span 2;
+  }
+  .m-4 {
+    grid-column: span 4;
+  }
+  .field-actions {
+    justify-content: flex-start;
   }
 }
 
