@@ -1,87 +1,57 @@
-# Mercado Fácil
+# mercado-wise
 
-App mobile-first (PWA) para registrar compras de supermercado a partir do **QR Code da NFC-e**
-(nota fiscal), acompanhar histórico e ver insights de gastos. Foco atual: **Minas Gerais (Sefaz MG)**.
+Foto da nota fiscal → leitura → interpretação → banco. Node + TypeScript.
 
-## Arquitetura
+Reconstrução em andamento na branch `rebuild`. O app antigo (Python + React)
+está na tag `legacy-v0`.
 
-```
-┌─────────────┐   JWT (chave pública)   ┌──────────────────┐
-│  PWA React  │ ──────────────────────▶ │ Supabase         │  dados do usuário (via RLS)
-│ (Vite + TS) │                         │ Postgres + Auth  │
-└─────┬───────┘                         └──────────────────┘
-      │ POST /upload-cupom (Bearer JWT)          ▲
-      ▼                                          │ escreve sob RLS (JWT do usuário)
-┌──────────────────────────────┐                 │
-│ FastAPI (OCR/scrape/normalize)│─────────────────┘
-│  • valida o JWT no Supabase   │
-│  • lê QR (pyzbar/OpenCV)      │──▶ Sefaz MG (allowlist de domínio, anti-SSRF)
-│  • normaliza nomes (Gemini)   │──▶ Google Gemini
-└──────────────────────────────┘
-```
+## Como funciona
 
-**Princípio de segurança:** o backend nunca escreve "em nome do" usuário com a `service_role`.
-Ele valida o JWT e grava usando a chave pública + o token do usuário, de modo que a **RLS**
-continua valendo. A `service_role` só toca tabelas globais (`product_dictionary`, `supermarket_aliases`).
+1. **Ler** ([src/services/reader.ts](src/services/reader.ts)): o Claude transcreve a
+   foto literalmente (descrição crua, EAN, quantidades, preços, cabeçalho).
+2. **Validar** ([src/services/validators.ts](src/services/validators.ts)): sem IA —
+   dígitos verificadores e contas da própria nota → semáforo.
+3. **Interpretar** ([src/services/interpreter.ts](src/services/interpreter.ts)): a
+   descrição crua vira produto, marca, variante, embalagem e categoria. Consulta
+   antes a **memória** de itens confirmados ([src/db/memory.ts](src/db/memory.ts)).
+4. **Revisar e confirmar** (web): nada vira dado definitivo sem a revisão. A
+   confirmação ensina a memória.
 
-## Stack
+[src/services/ingest.ts](src/services/ingest.ts) junta tudo: foto → rascunho no banco
+(com checagem de nota duplicada antes de gastar a interpretação).
 
-- **Frontend:** Vite, React, TypeScript, Tailwind, shadcn/ui, react-query, react-router. PWA via `vite-plugin-pwa`.
-- **Backend:** FastAPI (pacote `backend/app/`), pyzbar/OpenCV (QR), BeautifulSoup (scraping), `google-genai` (normalização), slowapi (rate limit).
-- **Dados/Auth:** Supabase (Postgres + RLS + Auth).
+Banco: Postgres do Supabase, schema `app` ([migrations/](migrations/)), acessado só
+pelo servidor ([src/db/](src/db/)). Testes usam PGlite (Postgres em memória).
 
-## Setup local
+## Configuração
 
-Pré-requisitos: Node 20+, Python 3.11+, e as libs de sistema do OpenCV/zbar (`libzbar0`, `libgl1`).
+Copie `.env.example` para `.env` e preencha:
 
-1. Copie as variáveis de ambiente e preencha:
-   ```sh
-   cp .env.example .env
-   ```
-2. **Frontend:**
-   ```sh
-   npm ci
-   npm run dev        # http://localhost:8080
-   ```
-3. **Backend:**
-   ```sh
-   cd backend
-   python -m venv venv && . venv/Scripts/activate   # (Windows: venv\Scripts\activate)
-   pip install -r requirements.txt
-   uvicorn app.main:app --reload   # http://localhost:8000
-   ```
+- `ANTHROPIC_API_KEY`: chave criada dentro de um workspace em platform.claude.com;
+- `DATABASE_URL`: Supabase → botão **Connect** → *Transaction pooler* (porta 6543);
+- `APP_PASSWORD_HASH` e `SESSION_SECRET`: gerados por `npm run setup-login`.
 
-### Variáveis de ambiente
+Depois: `npm run migrate`.
 
-Veja [.env.example](.env.example). Resumo:
+## Comandos
 
-| Variável | Escopo | Descrição |
-|---|---|---|
-| `VITE_SUPABASE_URL` | público | URL do projeto Supabase |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | público | Chave pública (anon) |
-| `VITE_API_URL` | público | URL do backend FastAPI |
-| `SUPABASE_SERVICE_ROLE_KEY` | **segredo** | Chave mestra — só tabelas globais |
-| `GEMINI_API_KEY` | **segredo** | API do Gemini |
-| `ALLOWED_ORIGINS` | backend | Origens do CORS (vírgula) |
-| `ALLOWED_SEFAZ_DOMAINS` | backend | Domínios Sefaz aceitos (anti-SSRF) |
-| `MAX_UPLOAD_MB` | backend | Limite de upload |
+```bash
+npm install
+npm run dev        # app em http://localhost:3000 (recarrega ao salvar)
+npm test           # Vitest
+npm run typecheck  # tsc --noEmit
+npm run lint       # Biome (npm run format corrige)
 
-> Segredos (`SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`) **nunca** vão para o bundle do frontend.
-
-## Testes
-
-```sh
-cd backend && pytest        # testes do parser/scraper/allowlist
-npm run typecheck && npm run build   # frontend
+npm run setup-login                          # senha do app → linhas para o .env
+npm run migrate                              # aplica migrations no banco
+npm run ingest -- foto.jpg                   # foto → rascunho no banco (usa a API)
+npm run process -- foto.jpg                  # pipeline sem gravar (usa a API)
+npm run read -- foto.jpg > nota.read.json    # só a leitura (usa a API)
+npm run validate -- nota.read.json           # confere leituras salvas (sem API)
+npm run interpret -- nota.read.json          # interpreta leituras salvas (usa a API)
+npm run import-saved -- pasta/               # leituras salvas → rascunhos (sem API)
+npm run seed-memory -- gabarito.json         # gabarito revisado → memória (sem API)
 ```
 
-## Deploy (Docker)
-
-```sh
-docker compose up --build
-# web  → http://localhost:8080
-# api  → http://localhost:8000
-```
-
-O `docker-compose.yml` injeta apenas as variáveis **públicas** `VITE_*` como build-args do
-frontend; os segredos vão só para o container da API via `env_file`.
+Fotos de notas reais ficam em `eval/fixtures/`, resultados em `eval/out/` e o
+gabarito em `eval/ground-truth/` — tudo fora do git.

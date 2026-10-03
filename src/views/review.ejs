@@ -1,0 +1,91 @@
+<%- include("partials/top", { title: receipt.store_name || "Nota" }) %>
+<%
+  const r = receipt;
+  const SOURCE = { memory: "memória", ai: "IA", user: "você" };
+  const STATUS = { ok: "✓", warning: "!", error: "✗" };
+  // Item que pede atenção abre sozinho na tela.
+  const needsLook = (it) =>
+    it.check_status !== "ok" || it.confidence !== "high" || it.product === null;
+%>
+
+<hgroup>
+  <h1><%= r.store_name || "Mercado não identificado" %></h1>
+  <p>
+    <% if (r.status === "draft") { %>
+      Revise e confirme. <%- include("partials/light", { light: r.traffic_light }) %>
+    <% } else { %>
+      Nota confirmada<%= r.confirmed_at ? " em " + r.confirmed_at.toLocaleDateString("pt-BR") : "" %>. Você pode corrigir e salvar de novo.
+    <% } %>
+  </p>
+</hgroup>
+
+<% if (errors.length > 0) { %>
+  <div class="error-box">
+    <strong>Não deu para salvar:</strong>
+    <ul><% for (const e of errors) { %><li><%= e %></li><% } %></ul>
+    <small>Os campos voltaram como estavam no banco; ajuste e tente de novo.</small>
+  </div>
+<% } %>
+
+<% if (r.has_image) { %>
+  <details class="photo">
+    <summary>Ver foto da nota</summary>
+    <a href="/receipts/<%= r.id %>/image" target="_blank" rel="noopener">
+      <img src="/receipts/<%= r.id %>/image" alt="Foto da nota" loading="lazy">
+    </a>
+  </details>
+<% } %>
+
+<form method="post" action="/receipts/<%= r.id %>/confirm" id="review-form">
+  <article>
+    <div class="grid">
+      <label>Mercado
+        <input name="store_name" value="<%= r.store_name || "" %>">
+      </label>
+      <label>Data
+        <input type="date" name="purchase_date" value="<%= r.purchase_date || "" %>">
+      </label>
+    </div>
+    <div class="grid">
+      <label>Total da nota (R$)
+        <input name="total" inputmode="decimal" value="<%= centsToInput(r.total_cents) %>" data-total>
+      </label>
+      <label>Pagamento
+        <input name="payment_method" value="<%= r.payment_method || "" %>">
+      </label>
+    </div>
+    <small class="muted">
+      CNPJ <%= r.store_cnpj || "—" %>
+      <% if (r.purchase_time) { %> · <%= r.purchase_time %><% } %>
+      <% if (r.access_key) { %><br>Chave <%= r.access_key.replace(/(\d{4})/g, "$1 ").trim() %><% } %>
+    </small>
+  </article>
+
+  <div id="items">
+    <% items.forEach((it, i) => { %>
+      <%- include("partials/item", { key: i, it, open: needsLook(it), SOURCE, STATUS }) %>
+    <% }) %>
+  </div>
+
+  <template id="new-item">
+    <%- include("partials/item", { key: "__KEY__", it: null, open: true, SOURCE, STATUS }) %>
+  </template>
+
+  <button type="button" class="secondary outline" id="add-item">+ Adicionar item</button>
+
+  <div class="totals-bar" id="totals" aria-live="polite">
+    <span>Soma <strong data-sum>—</strong></span>
+    <span>Nota <strong data-printed>—</strong></span>
+    <span data-diff-wrap>Diferença <strong data-diff>—</strong></span>
+  </div>
+
+  <button type="submit"><%= r.status === "draft" ? "Confirmar nota" : "Salvar correções" %></button>
+</form>
+
+<form method="post" action="/receipts/<%= r.id %>/delete"
+      onsubmit="return confirm('Excluir esta nota? Não dá para desfazer.')">
+  <button type="submit" class="secondary outline danger">Excluir nota</button>
+</form>
+
+<script src="/static/review.js?v=<%= assetVersion %>" defer></script>
+<%- include("partials/bottom") %>

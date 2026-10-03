@@ -1,0 +1,8 @@
+<%- include("partials/top", { title }) %>
+<article class="narrow">
+  <h2><%= title %></h2>
+  <% if (message) { %><p><%= message %></p><% } %>
+  <% if (typeof link !== "undefined" && link) { %><a href="<%= link.href %>" role="button"><%= link.label %></a><% } %>
+  <a href="/" class="secondary">Voltar para as notas</a>
+</article>
+<%- include("partials/bottom") %>

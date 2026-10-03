@@ -1,0 +1,15 @@
+<%- include("partials/top", { title: "Enviar nota" }) %>
+<h1>Enviar nota</h1>
+<% if (error) { %><p class="error-box"><%= error %></p><% } %>
+<form id="upload-form" method="post" action="/receipts" enctype="multipart/form-data">
+  <p>Fotografe a nota inteira, de cima, com boa luz. Se ela for comprida, dá para tirar a foto mais de longe: o app aproveita até 2576 px.</p>
+  <%# Sem "capture": no celular, o próprio sistema oferece câmera ou galeria. %>
+  <label class="file-button" role="button">
+    📷 Fotografar ou escolher a foto
+    <input type="file" name="photo" accept="image/*">
+  </label>
+  <noscript><button type="submit">Enviar</button></noscript>
+  <p id="upload-status" aria-live="polite"></p>
+</form>
+<script src="/static/upload.js?v=<%= assetVersion %>" defer></script>
+<%- include("partials/bottom") %>

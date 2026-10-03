@@ -1,0 +1,4 @@
+<%# Semáforo: green/yellow/red → bolinha + texto %>
+<% const LIGHTS = { green: ["🟢", "tudo confere"], yellow: ["🟡", "atenção"], red: ["🔴", "refazer foto?"] }; %>
+<% const l = LIGHTS[light] || ["⚪", "sem validação"]; %>
+<span class="light" title="<%= l[1] %>"><%= l[0] %> <small><%= l[1] %></small></span>

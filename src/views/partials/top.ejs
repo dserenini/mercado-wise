@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title><%= typeof title !== "undefined" ? title + " · " : "" %>mercado-wise</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css?v=<%= assetVersion %>">
+</head>
+<body>
+  <% if (typeof hideNav === "undefined" || !hideNav) { %>
+  <header class="container">
+    <nav>
+      <ul><li><a href="/" class="brand"><strong>mercado-wise</strong></a></li></ul>
+      <ul>
+        <li><a href="/receipts/new" role="button">Enviar nota</a></li>
+        <li>
+          <form method="post" action="/logout" class="inline">
+            <button type="submit" class="secondary outline">Sair</button>
+          </form>
+        </li>
+      </ul>
+    </nav>
+  </header>
+  <% } %>
+  <main class="container">
