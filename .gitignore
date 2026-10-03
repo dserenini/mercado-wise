@@ -14,6 +14,9 @@ data/
 # Avaliação: fotos de notas reais e relatórios ficam fora do git
 eval/fixtures/
 eval/out/
+# Gabarito revisado: hábitos de compra (produtos, lojas). O conteúdo também vive na
+# memória do banco. Repositório é público.
+eval/ground-truth/
 
 # Logs / editor / SO
 *.log
