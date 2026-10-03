@@ -1,6 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
-import type { ItemRead, ReceiptRead } from "../src/schemas/receipt.js";
 import type { PreparedImage } from "../src/services/image.js";
 import {
   READ_PROMPT_VERSION,
@@ -8,50 +7,23 @@ import {
   readReceipt,
   tidyRead,
 } from "../src/services/reader.js";
-
-function item(overrides: Partial<ItemRead> = {}): ItemRead {
-  return {
-    raw_description: "AG TON SCHW ZERO 350",
-    ean: "7894900360042",
-    store_code: null,
-    quantity: 1,
-    unit: "UN",
-    unit_price: 3.99,
-    total_price: 3.99,
-    discount: null,
-    ...overrides,
-  };
-}
-
-function receipt(overrides: Partial<ReceiptRead> = {}): ReceiptRead {
-  return {
-    is_receipt: true,
-    store: {
-      name: "SUPERMERCADO X",
-      cnpj: "12.345.678/0001-95",
-      address: null,
-    },
-    access_key: "3125 0912 3456 7800 0195 6500 1000 0123 4510 0012 3456",
-    purchase_date: "2025-09-30",
-    purchase_time: "18:42",
-    items: [item()],
-    items_count: 1,
-    gross_total: 3.99,
-    discount_total: null,
-    total: 3.99,
-    payment_method: "Cartão de Débito",
-    quality: { orientation: "ok", flags: [], illegible_lines: [] },
-    ...overrides,
-  };
-}
+import {
+  item,
+  receipt,
+  VALID_ACCESS_KEY,
+  VALID_CNPJ,
+} from "./helpers/receipt.js";
 
 describe("tidyRead", () => {
   it("deixa só dígitos no CNPJ e na chave de acesso", () => {
-    const tidy = tidyRead(receipt());
-    expect(tidy.store.cnpj).toBe("12345678000195");
-    expect(tidy.access_key).toBe(
-      "31250912345678000195650010000123451000123456",
+    const tidy = tidyRead(
+      receipt({
+        store: { name: null, cnpj: "11.222.333/0001-81", address: null },
+        access_key: "3525 0911 2223 3300 0181 6500 1000 0123 4510 0012 3451",
+      }),
     );
+    expect(tidy.store.cnpj).toBe(VALID_CNPJ);
+    expect(tidy.access_key).toBe(VALID_ACCESS_KEY);
   });
 
   it("move código curto de ean para store_code (pesável)", () => {
@@ -106,7 +78,7 @@ describe("readReceipt", () => {
       model: "claude-sonnet-5-5",
     });
 
-    expect(result.receipt.store.cnpj).toBe("12345678000195");
+    expect(result.receipt.store.cnpj).toBe(VALID_CNPJ);
     expect(result.promptVersion).toBe(READ_PROMPT_VERSION);
     expect(result.usage).toEqual({ inputTokens: 1500, outputTokens: 700 });
     const params = parse.mock

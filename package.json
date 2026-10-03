@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "read": "tsx scripts/read.ts"
+    "read": "tsx scripts/read.ts",
+    "validate": "tsx scripts/validate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
