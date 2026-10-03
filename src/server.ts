@@ -1,7 +1,6 @@
 import { createApp } from "./app.js";
+import { config } from "./config.js";
 
-const port = Number(process.env.PORT ?? 3000);
-
-createApp().listen(port, () => {
-  console.log(`mercado-wise ouvindo em http://localhost:${port}`);
+createApp().listen(config.PORT, () => {
+  console.log(`mercado-wise ouvindo em http://localhost:${config.PORT}`);
 });
