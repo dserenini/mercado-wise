@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import cookieSession from "cookie-session";
-import express from "express";
+import express, { type ErrorRequestHandler } from "express";
 import type { Db } from "./db/client.js";
 import { centsToInput, decimalToInput, formatCents } from "./lib/money.js";
 import { authRoutes, requireLogin } from "./routes/auth.js";
@@ -18,7 +18,7 @@ export interface AppDeps {
   secure?: boolean;
 }
 
-// Monta o app sem abrir porta: o server.ts chama listen(), e os testes
+// Monta o app sem abrir porta: src/index.ts o configura (Vercel), e os testes
 // usam o app direto (supertest), sem precisar subir servidor.
 export function createApp(deps: AppDeps) {
   const app = express();
@@ -40,25 +40,9 @@ export function createApp(deps: AppDeps) {
     res.json({ status: "ok" });
   });
 
-  app.use(
-    "/static",
-    express.static(join(here, "public"), {
-      maxAge: deps.secure ? "7d" : 0,
-    }),
-  );
-  app.get("/static/pico.min.css", (_req, res) => {
-    res.sendFile(
-      join(
-        here,
-        "..",
-        "node_modules",
-        "@picocss",
-        "pico",
-        "css",
-        "pico.min.css",
-      ),
-    );
-  });
+  // Arquivos de public/ (CSS, JS, Pico). Na Vercel quem serve é a CDN e esta linha
+  // é ignorada; localmente, o próprio Express serve.
+  app.use(express.static(join(here, "..", "public"), { maxAge: 0 }));
 
   // extended: itens chegam como items[0][campo]; o limite cobre notas compridas.
   app.use(express.urlencoded({ extended: true, parameterLimit: 10_000 }));
@@ -84,6 +68,17 @@ export function createApp(deps: AppDeps) {
       message: "Página não existe.",
     });
   });
+
+  // Erro inesperado: registra no log e mostra uma página simples (sem stack trace).
+  const onError: ErrorRequestHandler = (error, _req, res, _next) => {
+    console.error(error);
+    res.status(500).render("message", {
+      title: "Algo deu errado",
+      message:
+        "Tente de novo em instantes. Se continuar, veja os logs do servidor.",
+    });
+  };
+  app.use(onError);
 
   return app;
 }

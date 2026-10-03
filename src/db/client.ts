@@ -46,6 +46,11 @@ function wrap(sql: Sql, root: postgres.Sql | null): Db {
  * por isso `prepare: false`.
  */
 export function createPostgresDb(url: string): Db {
-  const sql = postgres(url, { prepare: false, max: 5, onnotice: () => {} });
+  const sql = postgres(url, {
+    prepare: false,
+    max: 5,
+    idle_timeout: 20, // solta conexões paradas (a função na Vercel fica viva entre requisições)
+    onnotice: () => {},
+  });
   return wrap(sql, sql);
 }

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import type { AppDeps } from "../app.js";
+import type { AppDeps } from "../create-app.js";
 import {
   confirmReceipt,
   deleteReceipt,
