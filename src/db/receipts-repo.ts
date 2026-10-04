@@ -7,6 +7,8 @@ import type { PipelineResult } from "../services/pipeline.js";
 import {
   type ItemValidation,
   isManufacturerEan,
+  type Problem,
+  problemsStatus,
   type ReceiptValidation,
   validateItem,
 } from "../services/validators.js";
@@ -35,9 +37,9 @@ export interface DraftInput {
 }
 
 export function draftFromPipeline(result: PipelineResult): DraftInput {
-  const { image, read, validation, interpretation } = result;
+  const { image, read, receipt, validation, interpretation } = result;
   return {
-    receipt: read.receipt,
+    receipt,
     validation,
     interpreted: interpretation.items,
     image,
@@ -151,8 +153,7 @@ export async function saveDraft(db: Db, input: DraftInput): Promise<number> {
 }
 
 function checkStatus(check: ItemValidation): "ok" | "warning" | "error" {
-  if (check.problems.some((p) => p.severity === "error")) return "error";
-  return check.problems.length > 0 ? "warning" : "ok";
+  return problemsStatus(check.problems);
 }
 
 // ---------------------------------------------------------------------------
@@ -201,8 +202,10 @@ export interface ItemRow {
   interpretation_source: string | null;
   product_id: number | null;
   check_status: "ok" | "warning" | "error" | null;
-  check_problems: { severity: "error" | "warning"; message: string }[];
+  check_problems: Problem[];
   edited_by_user: boolean;
+  /** só na tela: campos preenchidos pela memória num item de descrição ilegível */
+  suggested?: boolean;
 }
 
 // date/time viram texto no SELECT para não sofrer conversão de fuso no driver.

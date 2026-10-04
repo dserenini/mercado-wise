@@ -12,7 +12,7 @@ import {
 import type { IngestResult } from "../src/services/ingest.js";
 import { validateReceipt } from "../src/services/validators.js";
 import { testDb } from "./helpers/db.js";
-import { item, receipt } from "./helpers/receipt.js";
+import { item, receipt, VALID_CNPJ } from "./helpers/receipt.js";
 
 const PASSWORD = "senha-de-teste";
 let passwordHash: string;
@@ -249,6 +249,67 @@ describe("upload", () => {
       })
       .expect(400);
     expect(ingestCalls).toEqual([]);
+  });
+});
+
+const tonica = {
+  ...item(),
+  product: "Água tônica",
+  brand: "Schweppes",
+  variant: "Zero",
+  package_size: 350,
+  package_unit: "ml" as const,
+  category: "Bebidas" as const,
+  confidence: "high" as const,
+};
+
+describe("sugestões", () => {
+  it("descrição ilegível com EAN conhecido: sugere produto e descrição", async () => {
+    await rememberItem(db, tonica, VALID_CNPJ, "review");
+    const r = receipt({ items: [item({ raw_description: null })] });
+    const id = await saveDraft(db, {
+      receipt: r,
+      validation: validateReceipt(r),
+      interpreted: [null],
+      calls: { read: null, interpret: null },
+    });
+    const agent = await loggedIn();
+    const res = await agent.get(`/receipts/${id}`).expect(200);
+    expect(res.text).toContain("Sugestão da memória pelo código");
+    expect(res.text).toContain('value="AG TON SCHW ZERO 350"');
+    expect(res.text).toContain("Água tônica · Schweppes · Zero");
+  });
+
+  it("autocompleta pela descrição ou pelo produto, sem acento", async () => {
+    await rememberItem(db, tonica, VALID_CNPJ, "review");
+    const agent = await loggedIn();
+    const res = await agent
+      .get("/suggest/items")
+      .query({ q: "agua ton", cnpj: VALID_CNPJ })
+      .expect(200);
+    expect(res.body).toMatchObject([
+      { raw_description: "AG TON SCHW ZERO 350", product: "Água tônica" },
+    ]);
+    const byCode = await agent
+      .get("/suggest/code")
+      .query({ ean: "7894900360042" })
+      .expect(200);
+    expect(byCode.body).toMatchObject({ product: "Água tônica" });
+  });
+
+  it("lista os mercados já confirmados no campo Mercado", async () => {
+    const confirmed = await draftWithOtherKey();
+    await db.query(
+      "update app.receipts set status = 'confirmed', store_name = 'DMA DISTRIBUIDORA S/A' where id = $1",
+      [confirmed],
+    );
+    const agent = await loggedIn();
+    const res = await agent.get(`/receipts/${await draft()}`).expect(200);
+    expect(res.text).toContain('<option value="DMA DISTRIBUIDORA S/A">');
+  });
+
+  it("sugestões exigem login", async () => {
+    await request(app()).get("/suggest/items?q=agua").expect(303);
   });
 });
 
