@@ -11,6 +11,8 @@
     : "Item novo";
   const qty = it && it.quantity !== null ? decimalToInput(it.quantity) : "?";
   const total = it && it.total_price_cents !== null ? formatCents(it.total_price_cents) : "?";
+  // Campos preenchidos pela memória num item de descrição ilegível: destacados.
+  const sug = it && it.suggested ? "suggested" : "";
 %>
 <details class="item status-<%= it ? (it.check_status || "none") : "new" %>" data-item <%= open ? "open" : "" %>>
   <summary>
@@ -22,12 +24,14 @@
     <span class="item-total"><small><%= qty %> ×</small> <%= total %></span>
   </summary>
 
-  <% if (it && (it.check_problems.length > 0 || (it.interpretation_source && it.confidence !== "high"))) { %>
+  <% if (it && (it.check_problems.length > 0 || it.suggested || (it.interpretation_source && it.confidence !== "high"))) { %>
     <ul class="problems">
       <% for (const p of it.check_problems) { %>
         <li class="<%= p.severity %>"><%= p.message %></li>
       <% } %>
-      <% if (it.interpretation_source && it.confidence && it.confidence !== "high") { %>
+      <% if (it.suggested) { %>
+        <li class="warning">Sugestão da memória pelo código (a descrição saiu ilegível): confira os campos destacados.</li>
+      <% } else if (it.interpretation_source && it.confidence && it.confidence !== "high") { %>
         <li class="warning">Interpretação (<%= SOURCE[it.interpretation_source] || it.interpretation_source %>) com confiança <%= it.confidence === "low" ? "baixa" : "média" %>: confira o produto.</li>
       <% } %>
     </ul>
@@ -35,20 +39,20 @@
 
   <div class="fields">
     <label class="d-6 m-4">Na nota
-      <input name="<%= name("raw_description") %>" value="<%= v("raw_description") %>">
+      <input name="<%= name("raw_description") %>" value="<%= v("raw_description") %>" list="item-suggestions" autocomplete="off" data-desc class="<%= sug %>">
     </label>
     <label class="d-3 m-2">EAN
-      <input name="<%= name("ean") %>" value="<%= v("ean") %>" inputmode="numeric" pattern="\d*">
+      <input name="<%= name("ean") %>" value="<%= v("ean") %>" inputmode="numeric" pattern="\d*" data-code>
     </label>
     <label class="d-3 m-2">Código interno
-      <input name="<%= name("store_code") %>" value="<%= v("store_code") %>">
+      <input name="<%= name("store_code") %>" value="<%= v("store_code") %>" data-code>
     </label>
 
     <label class="d-2 m-1">Qtd
       <input name="<%= name("quantity") %>" value="<%= it ? decimalToInput(it.quantity) : "" %>" inputmode="decimal" data-qty>
     </label>
     <label class="d-2 m-1">Un
-      <input name="<%= name("unit") %>" value="<%= v("unit") %>">
+      <input name="<%= name("unit") %>" value="<%= v("unit") %>" data-unit>
     </label>
     <label class="d-3 m-1">Preço un.
       <input name="<%= name("unit_price") %>" value="<%= it ? centsToInput(it.unit_price_cents) : "" %>" inputmode="decimal" data-price>
@@ -61,17 +65,17 @@
     </label>
 
     <label class="d-4 m-4">Produto
-      <input name="<%= name("product") %>" value="<%= v("product") %>" required>
+      <input name="<%= name("product") %>" value="<%= v("product") %>" required data-fill="product" class="<%= sug %>">
     </label>
     <label class="d-3 m-2">Marca
-      <input name="<%= name("brand") %>" value="<%= v("brand") %>">
+      <input name="<%= name("brand") %>" value="<%= v("brand") %>" data-fill="brand" class="<%= sug %>">
     </label>
     <label class="d-5 m-2">Variante
-      <input name="<%= name("variant") %>" value="<%= v("variant") %>">
+      <input name="<%= name("variant") %>" value="<%= v("variant") %>" data-fill="variant" class="<%= sug %>">
     </label>
 
     <label class="d-4 m-2">Categoria
-      <select name="<%= name("category") %>" required>
+      <select name="<%= name("category") %>" required data-fill="category" class="<%= sug %>">
         <option value="">—</option>
         <% for (const c of CATEGORIES) { %>
           <option <%= v("category") === c ? "selected" : "" %>><%= c %></option>
@@ -79,10 +83,10 @@
       </select>
     </label>
     <label class="d-2 m-1">Embalagem
-      <input name="<%= name("package_size") %>" value="<%= it ? decimalToInput(it.package_size) : "" %>" inputmode="decimal">
+      <input name="<%= name("package_size") %>" value="<%= it ? decimalToInput(it.package_size) : "" %>" inputmode="decimal" data-fill="package_size" class="<%= sug %>">
     </label>
     <label class="d-2 m-1">Unid.
-      <select name="<%= name("package_unit") %>">
+      <select name="<%= name("package_unit") %>" data-fill="package_unit" class="<%= sug %>">
         <option value="">—</option>
         <% for (const u of ["g", "kg", "ml", "l", "un"]) { %>
           <option <%= v("package_unit") === u ? "selected" : "" %>><%= u %></option>

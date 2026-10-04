@@ -79,8 +79,17 @@ export type Check = "ok" | "fail" | "unknown";
 export type TrafficLight = "green" | "yellow" | "red";
 
 export interface Problem {
-  severity: "error" | "warning";
+  /** info: só registro (ex.: campo calculado), não pede revisão */
+  severity: "error" | "warning" | "info";
   message: string;
+}
+
+/** Situação do item pelo pior problema (info não conta). */
+export function problemsStatus(
+  problems: Problem[],
+): "ok" | "warning" | "error" {
+  if (problems.some((p) => p.severity === "error")) return "error";
+  return problems.some((p) => p.severity === "warning") ? "warning" : "ok";
 }
 
 export interface ItemValidation {

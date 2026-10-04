@@ -157,6 +157,9 @@ details.item > summary::after {
 .problems .warning {
   color: var(--mw-warn);
 }
+.problems .info {
+  color: var(--pico-muted-color);
+}
 /* Campos do item: grade compacta (12 colunas no computador, 4 no celular). */
 details.item {
   font-size: 0.85rem;
@@ -186,6 +189,15 @@ details.item .fields select {
 }
 details.item .fields select {
   padding-right: 1.75rem;
+}
+/* Calculado pela conta da linha: certeza, só sinalizado. */
+details.item .fields .derived {
+  border-color: var(--mw-ok);
+}
+/* Preenchido pela memória: sugestão, até o usuário mexer no campo. */
+details.item .fields .suggested {
+  border-color: var(--mw-warn);
+  box-shadow: inset 3px 0 0 var(--mw-warn);
 }
 .field-actions {
   display: flex;

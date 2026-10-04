@@ -1,3 +1,5 @@
+import type { ReceiptRead } from "../schemas/receipt.js";
+import { annotate, completeLines } from "./derive.js";
 import { type PreparedImage, prepareImage } from "./image.js";
 import {
   type InterpretationMemory,
@@ -13,6 +15,8 @@ export interface PhotoRead {
 }
 
 export interface PipelineResult extends PhotoRead {
+  /** a leitura com as contas das linhas completadas (read.receipt fica como a IA leu) */
+  receipt: ReceiptRead;
   validation: ReceiptValidation;
   interpretation: InterpretResult;
 }
@@ -24,18 +28,28 @@ export async function readPhoto(photo: Buffer): Promise<PhotoRead> {
   return { image, read };
 }
 
-/** Etapas 2 e 3: validar (sem IA) e interpretar (memória primeiro, IA para o resto). */
+/**
+ * Etapas 2 e 3: completar as contas das linhas e validar (sem IA), depois interpretar
+ * (memória primeiro, IA para o resto).
+ */
 export async function completeReading(
   { image, read }: PhotoRead,
   options: { memory?: InterpretationMemory } = {},
 ): Promise<PipelineResult> {
-  const validation = validateReceipt(read.receipt);
-  const { receipt } = read;
+  const { receipt, lines } = completeLines(read.receipt);
+  const checked = validateReceipt(receipt);
+  const validation = {
+    ...checked,
+    items: checked.items.map((item, i) => {
+      const line = lines[i];
+      return line ? { ...item, problems: annotate(item.problems, line) } : item;
+    }),
+  };
   const interpretation =
     receipt.is_receipt && receipt.items.length > 0
       ? await interpretItems(receipt.items, receipt.store, options)
       : { items: [], call: null };
-  return { image, read, validation, interpretation };
+  return { image, read, receipt, validation, interpretation };
 }
 
 /**

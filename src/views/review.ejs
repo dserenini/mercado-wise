@@ -36,11 +36,14 @@
   </details>
 <% } %>
 
-<form method="post" action="/receipts/<%= r.id %>/confirm" id="review-form">
+<form method="post" action="/receipts/<%= r.id %>/confirm" id="review-form" data-cnpj="<%= r.store_cnpj || "" %>">
   <article>
     <div class="grid">
       <label>Mercado
-        <input name="store_name" value="<%= r.store_name || "" %>">
+        <input name="store_name" value="<%= r.store_name || "" %>" list="stores" autocomplete="off">
+        <datalist id="stores">
+          <% for (const name of stores) { %><option value="<%= name %>"></option><% } %>
+        </datalist>
       </label>
       <label>Data
         <input type="date" name="purchase_date" value="<%= r.purchase_date || "" %>">
@@ -60,6 +63,9 @@
       <% if (r.access_key) { %><br>Chave <%= r.access_key.replace(/(\d{4})/g, "$1 ").trim() %><% } %>
     </small>
   </article>
+
+  <%# Sugestões do campo "Na nota", preenchidas pelo review.js conforme a digitação. %>
+  <datalist id="item-suggestions"></datalist>
 
   <div id="items">
     <% items.forEach((it, i) => { %>
