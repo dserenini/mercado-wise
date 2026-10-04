@@ -8,6 +8,7 @@ import {
 } from "../schemas/receipt.js";
 import { claudeClient } from "./claude.js";
 import type { PreparedImage } from "./image.js";
+import { isValidGtin } from "./validators.js";
 
 // Suba a versão sempre que mudar o prompt: ela vai para o banco junto com cada
 // leitura, para comparar resultados entre versões.
@@ -143,7 +144,12 @@ export function tidyRead(receipt: ReceiptRead): ReceiptRead {
 function tidyItem(item: ItemRead): ItemRead {
   let ean = digitsOnly(item.ean);
   let storeCode = item.store_code?.trim() || null;
-  if (ean !== null && ean.length < 8) {
+  // Curto demais para EAN, ou código interno da loja na coluna de EAN (o Carrefour
+  // imprime "00051570"): começa com 000 e não fecha o dígito verificador.
+  if (
+    ean !== null &&
+    (ean.length < 8 || (ean.startsWith("000") && !isValidGtin(ean)))
+  ) {
     storeCode ??= ean;
     ean = null;
   }

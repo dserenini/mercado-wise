@@ -34,6 +34,21 @@ describe("tidyRead", () => {
     expect(tidy.items[0]?.store_code).toBe("2045");
   });
 
+  it("move código interno com zeros à esquerda (Carrefour) para store_code", () => {
+    const tidy = tidyRead(
+      receipt({ items: [item({ ean: "00051570", store_code: null })] }),
+    );
+    expect(tidy.items[0]?.ean).toBeNull();
+    expect(tidy.items[0]?.store_code).toBe("00051570");
+  });
+
+  it("mantém EAN válido mesmo começando com zeros (UPC)", () => {
+    const tidy = tidyRead(
+      receipt({ items: [item({ ean: "00070847022206" })] }),
+    );
+    expect(tidy.items[0]?.ean).toBe("00070847022206");
+  });
+
   it("não sobrescreve store_code já lido", () => {
     const tidy = tidyRead(
       receipt({ items: [item({ ean: "12", store_code: "999" })] }),

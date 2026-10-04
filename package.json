@@ -23,7 +23,8 @@
     "ingest": "tsx scripts/ingest.ts",
     "import-saved": "tsx scripts/import-saved.ts",
     "seed-memory": "tsx scripts/seed-memory.ts",
-    "setup-login": "tsx scripts/setup-login.ts"
+    "setup-login": "tsx scripts/setup-login.ts",
+    "report": "tsx scripts/report.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
