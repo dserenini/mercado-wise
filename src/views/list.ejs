@@ -1,24 +1,120 @@
 <%- include("partials/top", { title: "Notas" }) %>
+<%
+  const selected = (field, value) => (String(form[field]) === String(value) ? "selected" : "");
+  // Topo da barra de valor: a maior nota, arredondada para cima em reais.
+  const sliderMax = Math.max(1, Math.ceil(bounds.maxCents / 100));
+%>
 <h1>Notas</h1>
-<% if (receipts.length === 0) { %>
-  <p>Nenhuma nota ainda. <a href="/receipts/new">Envie a primeira</a>.</p>
+
+<% if (flash) { const f = flash.receipt; %>
+  <div class="flash" role="status">
+    Nota #<%= f.id %> <%= flash.kind === "confirmada" ? "confirmada" : "corrigida" %>
+    (<%= f.store_name || "mercado não identificado" %><%= f.total_cents === null ? "" : ", " + formatCents(f.total_cents) %>).
+    <a href="/receipts/<%= f.id %>">Abrir de novo</a>
+  </div>
 <% } %>
-<% for (const r of receipts) { %>
-  <a href="/receipts/<%= r.id %>" class="receipt-row">
-    <article>
-      <div class="row-head">
-        <strong><%= r.store_name || "Mercado não identificado" %></strong>
-        <span><%= r.total_cents === null ? "—" : formatCents(r.total_cents) %></span>
+
+<details class="filters" <%= active > 0 ? "open" : "" %>>
+  <summary>Filtros<span data-filter-count><%= active > 0 ? ` (${active})` : "" %></span></summary>
+  <%# Aplicado ao vivo pelo list.js; sem JavaScript, Enter envia o formulário. %>
+  <form method="get" action="/" id="filter-form"
+        data-today="<%= new Date().toISOString().slice(0, 10) %>"
+        data-first-year="<%= bounds.firstYear || new Date().getFullYear() %>">
+    <div class="filter-grid">
+      <label>Status
+        <select name="status">
+          <option value="">Todas</option>
+          <option value="draft" <%= selected("status", "draft") %>>Rascunho</option>
+          <option value="confirmed" <%= selected("status", "confirmed") %>>Confirmada</option>
+        </select>
+      </label>
+      <label>Ordenar por data
+        <select name="ordem_data">
+          <option value="novas" <%= selected("ordem_data", "novas") %>>Mais novas primeiro</option>
+          <option value="antigas" <%= selected("ordem_data", "antigas") %>>Mais antigas primeiro</option>
+          <option value="nenhuma" <%= selected("ordem_data", "nenhuma") %>>Não ordenar por data</option>
+        </select>
+      </label>
+      <label>Ordenar por valor
+        <select name="ordem_valor">
+          <option value="">Não ordenar por valor</option>
+          <option value="baratas" <%= selected("ordem_valor", "baratas") %>>Mais baratas primeiro</option>
+          <option value="caras" <%= selected("ordem_valor", "caras") %>>Mais caras primeiro</option>
+        </select>
+      </label>
+    </div>
+
+    <fieldset class="filter-group">
+      <legend>Valor (R$)</legend>
+      <div class="pair">
+        <input name="de" inputmode="decimal" value="<%= form.de %>" placeholder="de" aria-label="Valor de">
+        <input name="ate" inputmode="decimal" value="<%= form.ate %>" placeholder="até" aria-label="Valor até">
       </div>
-      <div class="row-meta">
-        <span><%= r.purchase_date ? r.purchase_date.split("-").reverse().join("/") : "sem data" %> · <%= r.item_lines %> itens</span>
-        <% if (r.status === "draft") { %>
-          <span class="badge draft">revisar</span> <%- include("partials/light", { light: r.traffic_light }) %>
-        <% } else { %>
-          <span class="badge done">confirmada</span>
-        <% } %>
+      <div class="dual-range" data-dual-range>
+        <input type="range" min="0" max="<%= sliderMax %>" step="1" value="0" aria-label="Valor mínimo" data-range-min>
+        <input type="range" min="0" max="<%= sliderMax %>" step="1" value="<%= sliderMax %>" aria-label="Valor máximo" data-range-max>
       </div>
-    </article>
-  </a>
-<% } %>
+      <small class="muted">Só "de" = aquele valor (66 = R$ 66,00 a 66,99; 66,13 = exato). Com "até", faixa.</small>
+    </fieldset>
+
+    <fieldset class="filter-group">
+      <legend>Data</legend>
+      <div class="pair">
+        <div class="date-field" data-date-field>
+          <input type="hidden" name="data_de" value="<%= form.data_de %>">
+          <button type="button" class="date-button" data-placeholder="de">de</button>
+        </div>
+        <div class="date-field" data-date-field>
+          <input type="hidden" name="data_ate" value="<%= form.data_ate %>">
+          <button type="button" class="date-button" data-placeholder="até">até</button>
+        </div>
+      </div>
+      <small class="muted">No calendário, toque no mês ou no ano para escolher o mês ou o ano inteiro.</small>
+    </fieldset>
+
+    <div class="filter-actions">
+      <noscript><button type="submit">Filtrar</button></noscript>
+      <a href="/?" role="button" class="secondary outline" data-clear>Limpar filtros</a>
+    </div>
+  </form>
+</details>
+
+<div id="results" aria-live="polite">
+  <p class="list-summary">
+    <%= receipts.length %> <%= receipts.length === 1 ? "nota" : "notas" %> · <strong><%= formatCents(totalCents) %></strong>
+  </p>
+
+  <% if (receipts.length === 0) { %>
+    <% if (active > 0) { %>
+      <p>Nenhuma nota com esses filtros. <a href="/?">Limpar filtros</a>.</p>
+    <% } else { %>
+      <p>Nenhuma nota ainda. <a href="/receipts/new">Envie a primeira</a>.</p>
+    <% } %>
+  <% } %>
+  <% for (const g of groups) { %>
+    <% if (g.label) { %>
+      <h2 class="month-head"><span><%= g.label %></span> <small><%= g.receipts.length %> · <%= formatCents(g.totalCents) %></small></h2>
+    <% } %>
+    <% for (const r of g.receipts) { %>
+      <a href="/receipts/<%= r.id %>" class="receipt-row">
+        <article>
+          <div class="row-head">
+            <strong><%= r.store_name || "Mercado não identificado" %></strong>
+            <span><%= r.total_cents === null ? "—" : formatCents(r.total_cents) %></span>
+          </div>
+          <div class="row-meta">
+            <span><%= r.purchase_date ? r.purchase_date.split("-").reverse().join("/") : "sem data" %> · <%= r.item_lines %> itens</span>
+            <% if (r.status === "draft") { %>
+              <span class="badge draft">revisar</span> <%- include("partials/light", { light: r.traffic_light }) %>
+            <% } else { %>
+              <span class="badge done">confirmada</span>
+            <% } %>
+          </div>
+        </article>
+      </a>
+    <% } %>
+  <% } %>
+</div>
+
+<script src="/static/list.js?v=<%= assetVersion %>" defer></script>
 <%- include("partials/bottom") %>

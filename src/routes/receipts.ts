@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { type Request, Router } from "express";
 import multer from "multer";
 import type { AppDeps } from "../create-app.js";
 import {
@@ -6,11 +6,13 @@ import {
   deleteReceipt,
   getReceipt,
   getReceiptImage,
+  listBounds,
   listReceipts,
 } from "../db/receipts-repo.js";
 import { storeNames } from "../db/suggest-repo.js";
 import { ReadError } from "../services/reader.js";
 import { withLineMath, withMemory } from "../services/review.js";
+import { filterQuery, groupByMonth, parseListFilter } from "./list-filter.js";
 import { parseReviewForm } from "./review-form.js";
 
 // Rotas só recebem, chamam serviços/repositório e escolhem a tela. Nada de SQL ou
@@ -26,9 +28,35 @@ const upload = multer({
 export function receiptRoutes({ db, ingest }: AppDeps): Router {
   const router = Router();
 
-  router.get("/", async (_req, res) => {
-    res.render("list", { receipts: await listReceipts(db) });
+  router.get("/", async (req, res) => {
+    const { filter, form, active } = parseListFilter(req.query);
+    // Lembra os filtros para voltar a eles depois de abrir/confirmar uma nota.
+    if (req.session) req.session.listQuery = filterQuery(form);
+    const receipts = await listReceipts(db, filter);
+    res.render("list", {
+      receipts,
+      groups: groupByMonth(receipts, filter.order),
+      form,
+      active,
+      bounds: await listBounds(db),
+      totalCents: receipts.reduce((acc, r) => acc + (r.total_cents ?? 0), 0),
+      flash: await flashFor(req.query),
+    });
   });
+
+  // Aviso depois de confirmar (?confirmada=ID) ou salvar correções (?corrigida=ID).
+  async function flashFor(query: Record<string, unknown>) {
+    const kind = query.confirmada ? "confirmada" : "corrigida";
+    const id = Number(query[kind]);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    const saved = await getReceipt(db, id);
+    return saved ? { kind, receipt: saved.receipt } : null;
+  }
+
+  const listUrl = (req: Request) => {
+    const query: unknown = req.session?.listQuery;
+    return typeof query === "string" && query !== "" ? `/?${query}` : "/";
+  };
 
   router.get("/receipts/new", (_req, res) => {
     res.render("upload", { error: null });
@@ -74,6 +102,7 @@ export function receiptRoutes({ db, ingest }: AppDeps): Router {
     res.render("review", {
       ...withLineMath(await withMemory(db, saved)),
       stores: await storeNames(db, saved.receipt.store_cnpj),
+      back: listUrl(req),
       errors: [],
     });
   });
@@ -100,17 +129,26 @@ export function receiptRoutes({ db, ingest }: AppDeps): Router {
       res.status(400).render("review", {
         ...withLineMath(await withMemory(db, saved)),
         stores: await storeNames(db, saved.receipt.store_cnpj),
+        back: listUrl(req),
         errors: form.errors,
       });
       return;
     }
+    const before = await getReceipt(db, id);
+    if (!before) {
+      res.sendStatus(404);
+      return;
+    }
     await confirmReceipt(db, id, form.items, form.header);
-    res.redirect(303, `/receipts/${id}?confirmed=1`);
+    // De volta à lista (com os filtros de antes), com o aviso do que foi salvo.
+    const kind = before.receipt.status === "draft" ? "confirmada" : "corrigida";
+    const back = listUrl(req);
+    res.redirect(303, `${back}${back.includes("?") ? "&" : "?"}${kind}=${id}`);
   });
 
   router.post("/receipts/:id/delete", async (req, res) => {
     await deleteReceipt(db, Number(req.params.id));
-    res.redirect(303, "/");
+    res.redirect(303, listUrl(req));
   });
 
   return router;
