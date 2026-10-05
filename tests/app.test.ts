@@ -141,6 +141,7 @@ describe("notas", () => {
       .type("form")
       .send(reviewForm);
     expect(res.status).toBe(303);
+    expect(res.headers.location).toBe(`/?confirmada=${id}`);
 
     const saved = await getReceipt(db, id);
     expect(saved?.receipt.status).toBe("confirmed");
@@ -179,6 +180,41 @@ describe("notas", () => {
     expect(res.text).toContain("AG TON SCHW ZERO 350 · memória");
     // só mostra: o banco continua com o rascunho original até a confirmação
     expect((await getReceipt(db, id))?.items[0]?.product).toBeNull();
+  });
+
+  it("depois de confirmar, volta para a lista com os filtros e o aviso", async () => {
+    const id = await draft();
+    const agent = await loggedIn();
+    await agent.get("/?status=draft&data_de=2025").expect(200);
+
+    const first = await agent
+      .post(`/receipts/${id}/confirm`)
+      .type("form")
+      .send(reviewForm)
+      .expect(303);
+    expect(first.headers.location).toBe(
+      `/?status=draft&data_de=2025&confirmada=${id}`,
+    );
+    const list = await agent.get(String(first.headers.location)).expect(200);
+    expect(list.text).toContain(`Nota #${id} confirmada`);
+
+    // salvar de novo uma nota já confirmada é "corrigida"
+    const again = await agent
+      .post(`/receipts/${id}/confirm`)
+      .type("form")
+      .send(reviewForm)
+      .expect(303);
+    expect(again.headers.location).toContain(`corrigida=${id}`);
+  });
+
+  it("lista filtra pela URL e mostra o resumo", async () => {
+    await draft();
+    const agent = await loggedIn();
+    const all = await agent.get("/").expect(200);
+    expect(all.text).toContain("1 nota · <strong>R$ 3,99</strong>");
+    const none = await agent.get("/?status=confirmed").expect(200);
+    expect(none.text).toContain("Nenhuma nota com esses filtros");
+    expect(none.text).toContain("data-filter-count> (1)<");
   });
 
   it("formulário inválido volta para a revisão com os erros", async () => {

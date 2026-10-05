@@ -73,6 +73,237 @@ form.inline button {
   color: var(--mw-ok);
 }
 
+.flash {
+  border-left: 4px solid var(--mw-ok);
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  background: color-mix(in srgb, var(--mw-ok) 10%, transparent);
+}
+.flash a {
+  margin-left: 0.5rem;
+}
+.back-link {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  font-size: 0.9em;
+}
+
+/* Filtros da lista */
+details.filters {
+  margin-bottom: 0.75rem;
+}
+details.filters summary {
+  font-weight: 600;
+}
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0 0.75rem;
+  margin-top: 0.5rem;
+}
+.filter-grid label {
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+.filter-group input:not([type="range"]),
+.filter-grid select,
+.date-button {
+  margin-top: 0.15rem;
+  margin-bottom: 0.4rem;
+  padding-block: 0.35rem;
+  height: 2.3rem;
+}
+.filter-group {
+  margin: 0.25rem 0 0.75rem;
+}
+.filter-group legend {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.filter-group small {
+  display: block;
+  font-size: 0.75rem;
+}
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  max-width: 24rem;
+}
+.filter-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.filter-actions > * {
+  margin: 0;
+  width: auto;
+  padding: 0.4rem 1rem;
+}
+
+/* Barra de valor: dois <input type=range> sobrepostos; a faixa escolhida pintada
+   entre --lo e --hi. Só as bolinhas recebem o toque. */
+.dual-range {
+  --lo: 0%;
+  --hi: 100%;
+  position: relative;
+  height: 1.75rem;
+  max-width: 24rem;
+  margin: 0.25rem 0;
+}
+.dual-range::before {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 0.3rem;
+  transform: translateY(-50%);
+  border-radius: 1rem;
+  background: linear-gradient(
+    to right,
+    var(--pico-muted-border-color) var(--lo),
+    var(--pico-primary) var(--lo) var(--hi),
+    var(--pico-muted-border-color) var(--hi)
+  );
+}
+.dual-range input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  appearance: none;
+}
+.dual-range input[type="range"]::-webkit-slider-runnable-track {
+  background: transparent;
+}
+.dual-range input[type="range"]::-moz-range-track {
+  background: transparent;
+}
+.dual-range input[type="range"]::-webkit-slider-thumb {
+  pointer-events: auto;
+}
+.dual-range input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+}
+
+/* Campo de data + calendário */
+.date-field {
+  position: relative;
+}
+.date-button {
+  width: 100%;
+  text-align: left;
+  font-size: 0.95rem;
+  --pico-background-color: var(--pico-form-element-background-color);
+  --pico-border-color: var(--pico-form-element-border-color);
+  --pico-color: var(--pico-muted-color);
+}
+.date-button.filled {
+  --pico-color: var(--pico-color);
+}
+.calendar {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  left: 0;
+  width: 17.5rem;
+  padding: 0.6rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  background: var(--pico-card-background-color);
+  box-shadow: var(--pico-card-box-shadow);
+}
+.date-field:last-child .calendar {
+  left: auto;
+  right: 0;
+}
+.calendar .cal-btn {
+  margin: 0;
+  padding: 0.35rem 0;
+  font-size: 0.85rem;
+  border: 0;
+  --pico-background-color: transparent;
+  --pico-color: var(--pico-color);
+}
+.calendar .cal-btn:hover {
+  --pico-background-color: var(--pico-muted-border-color);
+}
+.cal-head {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.4rem;
+}
+.cal-head .cal-title {
+  flex: 1;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.cal-head .cal-nav {
+  width: 2rem;
+}
+.cal-grid {
+  display: grid;
+  gap: 0.15rem;
+}
+.cal-days {
+  grid-template-columns: repeat(7, 1fr);
+}
+.cal-months,
+.cal-years {
+  grid-template-columns: repeat(3, 1fr);
+}
+.cal-weekday {
+  text-align: center;
+  font-size: 0.7rem;
+  color: var(--pico-muted-color);
+}
+.calendar .cal-btn.today {
+  outline: 1px solid var(--pico-primary);
+}
+.calendar .cal-btn.selected {
+  --pico-background-color: var(--pico-primary);
+  --pico-color: var(--pico-primary-inverse);
+}
+.calendar .cal-btn.muted {
+  opacity: 0.5;
+}
+.cal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+.cal-foot .cal-btn {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--pico-muted-border-color);
+}
+@media (max-width: 576px) {
+  /* No celular, o calendário vira um painel na largura da tela, no rodapé. */
+  .calendar,
+  .date-field:last-child .calendar {
+    position: fixed;
+    inset: auto 0 0;
+    width: auto;
+    border-radius: var(--pico-border-radius) var(--pico-border-radius) 0 0;
+  }
+}
+.month-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1rem;
+}
+.month-head small {
+  color: var(--pico-muted-color);
+  font-weight: normal;
+}
+.list-summary {
+  color: var(--pico-muted-color);
+  margin-bottom: 0.75rem;
+}
+
 /* Upload */
 .file-button {
   display: block;

@@ -248,15 +248,81 @@ export interface ReceiptSummary {
   created_at: Date;
 }
 
-export async function listReceipts(db: Db): Promise<ReceiptSummary[]> {
+/** Ordem da lista: por data, por valor ou os dois (meses agrupados, valor dentro). */
+export interface ListOrder {
+  date: "desc" | "asc" | null;
+  value: "desc" | "asc" | null;
+}
+
+export interface ListFilter {
+  status: "draft" | "confirmed" | null;
+  /** centavos; com os dois iguais, valor exato */
+  minCents: number | null;
+  maxCents: number | null;
+  /** AAAA-MM-DD, inclusive */
+  fromDate: string | null;
+  toDate: string | null;
+  order: ListOrder;
+}
+
+function orderBy({ date, value }: ListOrder): string {
+  const byValue = value && `r.total_cents ${value} nulls last`;
+  if (date && byValue)
+    return `date_trunc('month', r.purchase_date) ${date} nulls last, ${byValue}, r.id`;
+  if (byValue) return `${byValue}, r.purchase_date desc nulls last, r.id`;
+  const dir = date ?? "desc";
+  return `r.purchase_date ${dir} nulls last, r.id ${dir}`;
+}
+
+/** Lista de notas com os filtros da página inicial (sem filtro: todas). */
+export async function listReceipts(
+  db: Db,
+  filter: Partial<ListFilter> = {},
+): Promise<ReceiptSummary[]> {
+  const { where, params } = listWhere(filter);
   return db.query<ReceiptSummary>(
     `select r.id, r.status, r.store_name, r.purchase_date::text as purchase_date,
             r.total_cents, r.traffic_light, r.created_at,
             (select count(*)::int from app.receipt_items i where i.receipt_id = r.id)
               as item_lines
        from app.receipts r
-      order by r.purchase_date desc nulls last, r.id desc`,
+      ${where}
+      order by ${orderBy(filter.order ?? { date: "desc", value: null })}`,
+    params,
   );
+}
+
+/** Limites para os filtros: maior total (barra de valor) e primeiro ano com nota. */
+export async function listBounds(
+  db: Db,
+): Promise<{ maxCents: number; firstYear: number | null }> {
+  const [row] = await db.query<{
+    max_cents: number | null;
+    first_year: number | null;
+  }>(
+    `select max(total_cents)::int as max_cents,
+            extract(year from min(purchase_date))::int as first_year
+       from app.receipts`,
+  );
+  return { maxCents: row?.max_cents ?? 0, firstYear: row?.first_year ?? null };
+}
+
+function listWhere(filter: Partial<ListFilter>) {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  const add = (sql: string, value: unknown) => {
+    params.push(value);
+    conditions.push(sql.replace("?", `$${params.length}`));
+  };
+  if (filter.status) add("r.status = ?", filter.status);
+  if (filter.minCents != null) add("r.total_cents >= ?", filter.minCents);
+  if (filter.maxCents != null) add("r.total_cents <= ?", filter.maxCents);
+  if (filter.fromDate) add("r.purchase_date >= ?::date", filter.fromDate);
+  if (filter.toDate) add("r.purchase_date <= ?::date", filter.toDate);
+  return {
+    where: conditions.length > 0 ? `where ${conditions.join(" and ")}` : "",
+    params,
+  };
 }
 
 export async function findReceiptByAccessKey(
