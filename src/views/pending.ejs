@@ -1,0 +1,40 @@
+<%- include("partials/top", { title: `Nota #${receipt.id}` }) %>
+<%# Nota que ainda não tem revisão: lendo, leitura que falhou ou repetida pela chave. %>
+<% const r = receipt; %>
+<a href="<%= back %>" class="back-link">← Notas</a>
+
+<article class="narrow">
+  <% if (r.status === "processing") { %>
+    <h2>Lendo a nota #<%= r.id %>…</h2>
+    <p>Leva cerca de 30 segundos. Pode fechar esta tela: a leitura continua e a nota
+      aparece como rascunho na lista.</p>
+    <%# Recarrega sozinha até a leitura terminar. %>
+    <script>setTimeout(() => location.reload(), 5000);</script>
+  <% } else if (r.status === "failed") { %>
+    <h2>A leitura da nota #<%= r.id %> falhou</h2>
+    <p class="error-box"><%= r.error || "Erro desconhecido." %></p>
+    <form method="post" action="/receipts/<%= r.id %>/retry">
+      <button type="submit">Tentar de novo</button>
+    </form>
+  <% } else { %>
+    <h2>Nota #<%= r.id %> já cadastrada</h2>
+    <p>A chave de acesso desta foto é a mesma da
+      <a href="/receipts/<%= r.duplicate_of %>">nota #<%= r.duplicate_of %></a>:
+      é a mesma nota fiscal. Pode excluir esta.</p>
+  <% } %>
+
+  <% if (r.status !== "processing") { %>
+    <form method="post" action="/receipts/<%= r.id %>/delete"
+          onsubmit="return confirm('Excluir esta nota?')">
+      <button type="submit" class="secondary outline danger">Excluir</button>
+    </form>
+  <% } %>
+
+  <% if (r.has_image) { %>
+    <details class="photo">
+      <summary>Ver foto</summary>
+      <img src="/receipts/<%= r.id %>/image" alt="Foto da nota" loading="lazy">
+    </details>
+  <% } %>
+</article>
+<%- include("partials/bottom") %>

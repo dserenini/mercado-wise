@@ -72,6 +72,30 @@ form.inline button {
 .badge.done {
   color: var(--mw-ok);
 }
+.badge.bad {
+  color: var(--mw-bad);
+}
+.badge.reading {
+  color: var(--pico-primary);
+}
+.duplicate-box {
+  border-left: 4px solid var(--mw-warn);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background: color-mix(in srgb, var(--mw-warn) 10%, transparent);
+}
+.duplicate-actions,
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.duplicate-actions form button,
+.review-actions > * {
+  margin: 0;
+  width: auto;
+}
 
 .flash {
   border-left: 4px solid var(--mw-ok);
@@ -305,6 +329,14 @@ details.filters summary {
 }
 
 /* Upload */
+.upload-list {
+  padding-left: 0;
+}
+.upload-list li {
+  list-style: none;
+  font-size: 0.9rem;
+  margin-bottom: 0.3rem;
+}
 .file-button {
   display: block;
   text-align: center;
@@ -492,4 +524,22 @@ details.item .fields .suggested {
 }
 .totals-bar.bad [data-diff] {
   color: var(--mw-bad);
+}
+
+/* Status da lista: dropdown com caixas de seleção (no fim: seletores mais
+   específicos que os dos itens da revisão). */
+.status-field {
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+.status-field details.dropdown {
+  margin: 0.15rem 0 0.4rem;
+}
+.status-field details.dropdown summary {
+  height: 2.3rem;
+  padding-block: 0.35rem;
+  font-size: 1rem;
+}
+.status-field details.dropdown li label {
+  font-size: 0.95rem;
 }

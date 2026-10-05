@@ -55,101 +55,245 @@ export function draftFromPipeline(result: PipelineResult): DraftInput {
 
 /** Grava a nota como rascunho (status 'draft'), já com leitura, validação e interpretação. */
 export async function saveDraft(db: Db, input: DraftInput): Promise<number> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx.query<{ id: number }>(
+      "insert into app.receipts (source, status) values ($1, 'draft') returning id",
+      [input.source ?? "photo"],
+    );
+    if (!row) throw new Error("insert em receipts não devolveu id");
+    await writeDraft(tx, row.id, input);
+    if (input.image) await insertImage(tx, row.id, input.image, null);
+    return row.id;
+  });
+}
+
+/**
+ * Nota enviada por foto: nasce só com a foto (status 'processing', ver
+ * createPending) e é completada aqui quando a leitura termina. Na nova tentativa,
+ * o que uma leitura anterior tenha gravado é trocado.
+ */
+export async function fillDraft(
+  db: Db,
+  id: number,
+  input: DraftInput,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.query("delete from app.receipt_items where receipt_id = $1", [id]);
+    await tx.query("delete from app.extractions where receipt_id = $1", [id]);
+    await writeDraft(tx, id, input);
+  });
+}
+
+async function writeDraft(tx: Db, id: number, input: DraftInput) {
   const { receipt: r, validation, interpreted } = input;
   const cents = (v: number | null) => (v === null ? null : toCents(v));
 
-  return db.transaction(async (tx) => {
-    const [row] = await tx.query<{ id: number }>(
-      `insert into app.receipts
-         (source, store_name, store_cnpj, store_address, access_key, purchase_date,
-          purchase_time, items_count, gross_total_cents, discount_total_cents,
-          total_cents, payment_method, traffic_light)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-       returning id`,
+  await tx.query(
+    `update app.receipts
+        set status = 'draft', error = null, store_name = $2, store_cnpj = $3,
+            store_address = $4, access_key = $5, purchase_date = $6, purchase_time = $7,
+            items_count = $8, gross_total_cents = $9, discount_total_cents = $10,
+            total_cents = $11, payment_method = $12, traffic_light = $13
+      where id = $1`,
+    [
+      id,
+      r.store.name,
+      r.store.cnpj,
+      r.store.address,
+      r.access_key,
+      r.purchase_date,
+      r.purchase_time,
+      r.items_count,
+      cents(r.gross_total),
+      cents(r.discount_total),
+      cents(r.total),
+      r.payment_method,
+      validation.trafficLight,
+    ],
+  );
+
+  for (const [position, item] of r.items.entries()) {
+    const it = interpreted[position] ?? null;
+    const check = validation.items[position];
+    await tx.query(
+      `insert into app.receipt_items
+         (receipt_id, position, raw_description, ean, store_code, quantity, unit,
+          unit_price_cents, total_price_cents, discount_cents, product, brand, variant,
+          package_size, package_unit, category, confidence, interpretation_source,
+          check_status, check_problems)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+               $17, $18, $19, $20::text::jsonb)`,
       [
-        input.source ?? "photo",
-        r.store.name,
-        r.store.cnpj,
-        r.store.address,
-        r.access_key,
-        r.purchase_date,
-        r.purchase_time,
-        r.items_count,
-        cents(r.gross_total),
-        cents(r.discount_total),
-        cents(r.total),
-        r.payment_method,
-        validation.trafficLight,
+        id,
+        position,
+        item.raw_description,
+        item.ean,
+        item.store_code,
+        item.quantity,
+        item.unit,
+        cents(item.unit_price),
+        cents(item.total_price),
+        cents(item.discount),
+        it?.product ?? null,
+        it?.brand ?? null,
+        it?.variant ?? null,
+        it?.package_size ?? null,
+        it?.package_unit ?? null,
+        it?.category ?? null,
+        it?.confidence ?? null,
+        it?.source ?? null,
+        check ? checkStatus(check) : null,
+        JSON.stringify(check?.problems ?? []),
       ],
     );
+  }
+
+  for (const [stage, call] of Object.entries(input.calls)) {
+    if (!call) continue;
+    await tx.query(
+      `insert into app.extractions
+         (receipt_id, stage, model, prompt_version, payload, input_tokens,
+          output_tokens, latency_ms)
+       values ($1, $2, $3, $4, $5::text::jsonb, $6, $7, $8)`,
+      [
+        id,
+        stage,
+        call.model,
+        call.promptVersion,
+        JSON.stringify(call.payload),
+        call.usage.inputTokens,
+        call.usage.outputTokens,
+        call.latencyMs,
+      ],
+    );
+  }
+}
+
+async function insertImage(
+  tx: Db,
+  receiptId: number,
+  image: PreparedImage,
+  hash: string | null,
+) {
+  const { data, mediaType, width, height } = image;
+  await tx.query(
+    `insert into app.receipt_images (receipt_id, media_type, width, height, data, hash)
+     values ($1, $2, $3, $4, $5, $6)`,
+    [receiptId, mediaType, width, height, data, hash],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Envio por foto: a nota nasce com a foto e é lida em segundo plano
+// ---------------------------------------------------------------------------
+
+export type ReceiptStatus =
+  | "processing"
+  | "failed"
+  | "draft"
+  | "duplicate"
+  | "confirmed";
+
+/** Nota nova só com a foto, esperando a leitura (status 'processing'). */
+export async function createPending(
+  db: Db,
+  image: PreparedImage,
+  hash: string,
+): Promise<number> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx.query<{ id: number }>(
+      "insert into app.receipts (source, status) values ('photo', 'processing') returning id",
+    );
     if (!row) throw new Error("insert em receipts não devolveu id");
-
-    for (const [position, item] of r.items.entries()) {
-      const it = interpreted[position] ?? null;
-      const check = validation.items[position];
-      await tx.query(
-        `insert into app.receipt_items
-           (receipt_id, position, raw_description, ean, store_code, quantity, unit,
-            unit_price_cents, total_price_cents, discount_cents, product, brand, variant,
-            package_size, package_unit, category, confidence, interpretation_source,
-            check_status, check_problems)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-                 $17, $18, $19, $20::text::jsonb)`,
-        [
-          row.id,
-          position,
-          item.raw_description,
-          item.ean,
-          item.store_code,
-          item.quantity,
-          item.unit,
-          cents(item.unit_price),
-          cents(item.total_price),
-          cents(item.discount),
-          it?.product ?? null,
-          it?.brand ?? null,
-          it?.variant ?? null,
-          it?.package_size ?? null,
-          it?.package_unit ?? null,
-          it?.category ?? null,
-          it?.confidence ?? null,
-          it?.source ?? null,
-          check ? checkStatus(check) : null,
-          JSON.stringify(check?.problems ?? []),
-        ],
-      );
-    }
-
-    if (input.image) {
-      const { data, mediaType, width, height } = input.image;
-      await tx.query(
-        `insert into app.receipt_images (receipt_id, media_type, width, height, data)
-         values ($1, $2, $3, $4, $5)`,
-        [row.id, mediaType, width, height, data],
-      );
-    }
-
-    for (const [stage, call] of Object.entries(input.calls)) {
-      if (!call) continue;
-      await tx.query(
-        `insert into app.extractions
-           (receipt_id, stage, model, prompt_version, payload, input_tokens,
-            output_tokens, latency_ms)
-         values ($1, $2, $3, $4, $5::text::jsonb, $6, $7, $8)`,
-        [
-          row.id,
-          stage,
-          call.model,
-          call.promptVersion,
-          JSON.stringify(call.payload),
-          call.usage.inputTokens,
-          call.usage.outputTokens,
-          call.latencyMs,
-        ],
-      );
-    }
+    await insertImage(tx, row.id, image, hash);
     return row.id;
   });
+}
+
+/** Fotos já cadastradas (menos as de leitura que falhou), com a impressão digital. */
+export async function photoHashes(
+  db: Db,
+): Promise<{ id: number; status: ReceiptStatus; hash: string }[]> {
+  return db.query(
+    `select r.id, r.status, i.hash
+       from app.receipt_images i join app.receipts r on r.id = i.receipt_id
+      where i.hash is not null and r.status <> 'failed'`,
+  );
+}
+
+/**
+ * Reserva a vez de ler: marca o início da leitura se houver menos de `max`
+ * leituras em andamento (as começadas há mais de 3 minutos não contam: travaram).
+ */
+export async function claimReadSlot(
+  db: Db,
+  id: number,
+  max: number,
+): Promise<boolean> {
+  const rows = await db.query(
+    `update app.receipts set read_started_at = now()
+      where id = $1
+        and (select count(*) from app.receipts
+              where status = 'processing' and id <> $1
+                and read_started_at > now() - interval '3 minutes') < $2
+      returning id`,
+    [id, max],
+  );
+  return rows.length > 0;
+}
+
+export async function markFailed(
+  db: Db,
+  id: number,
+  error: string,
+): Promise<void> {
+  await db.query(
+    "update app.receipts set status = 'failed', error = $2 where id = $1",
+    [id, error],
+  );
+}
+
+export async function markDuplicate(
+  db: Db,
+  id: number,
+  of: number,
+  reason: string,
+): Promise<void> {
+  await db.query(
+    `update app.receipts set status = 'duplicate', duplicate_of = $2,
+            duplicate_reason = $3 where id = $1`,
+    [id, of, reason],
+  );
+}
+
+/** "Não é repetida": a nota volta a ser um rascunho comum. */
+export async function clearDuplicate(db: Db, id: number): Promise<void> {
+  await db.query(
+    `update app.receipts set status = 'draft', duplicate_of = null,
+            duplicate_reason = null where id = $1 and status = 'duplicate'`,
+    [id],
+  );
+}
+
+/** Nova tentativa de leitura de uma nota que falhou. */
+export async function requeue(db: Db, id: number): Promise<boolean> {
+  const rows = await db.query(
+    `update app.receipts set status = 'processing', error = null,
+            read_started_at = null
+      where id = $1 and status = 'failed' returning id`,
+    [id],
+  );
+  return rows.length > 0;
+}
+
+/** Leitura que não terminou (a função caiu ou estourou o tempo) vira falha. */
+export async function failStaleReads(db: Db): Promise<void> {
+  await db.query(
+    `update app.receipts
+        set status = 'failed', error = 'A leitura não terminou a tempo. Tente de novo.'
+      where status = 'processing'
+        and coalesce(read_started_at, created_at) < now() - interval '6 minutes'`,
+  );
 }
 
 function checkStatus(check: ItemValidation): "ok" | "warning" | "error" {
@@ -162,7 +306,7 @@ function checkStatus(check: ItemValidation): "ok" | "warning" | "error" {
 
 export interface ReceiptRow {
   id: number;
-  status: "draft" | "confirmed";
+  status: ReceiptStatus;
   source: string;
   store_name: string | null;
   store_cnpj: string | null;
@@ -179,6 +323,9 @@ export interface ReceiptRow {
   traffic_light: "green" | "yellow" | "red" | null;
   created_at: Date;
   confirmed_at: Date | null;
+  error: string | null;
+  duplicate_of: number | null;
+  duplicate_reason: string | null;
 }
 
 export interface ItemRow {
@@ -213,7 +360,7 @@ const RECEIPT_COLUMNS = `id, status, source, store_name, store_cnpj, store_addre
   access_key, purchase_date::text as purchase_date,
   to_char(purchase_time, 'HH24:MI') as purchase_time, items_count, gross_total_cents,
   discount_total_cents, total_cents, payment_method, traffic_light, created_at,
-  confirmed_at,
+  confirmed_at, error, duplicate_of, duplicate_reason,
   exists (select 1 from app.receipt_images i where i.receipt_id = app.receipts.id)
     as has_image`;
 
@@ -239,13 +386,15 @@ export async function getReceipt(
 
 export interface ReceiptSummary {
   id: number;
-  status: "draft" | "confirmed";
+  status: ReceiptStatus;
   store_name: string | null;
   purchase_date: string | null;
   total_cents: number | null;
   traffic_light: "green" | "yellow" | "red" | null;
   item_lines: number;
   created_at: Date;
+  error: string | null;
+  duplicate_of: number | null;
 }
 
 /** Ordem da lista: por data, por valor ou os dois (meses agrupados, valor dentro). */
@@ -255,7 +404,8 @@ export interface ListOrder {
 }
 
 export interface ListFilter {
-  status: "draft" | "confirmed" | null;
+  /** vazio = todos */
+  status: ReceiptStatus[];
   /** centavos; com os dois iguais, valor exato */
   minCents: number | null;
   maxCents: number | null;
@@ -282,7 +432,7 @@ export async function listReceipts(
   const { where, params } = listWhere(filter);
   return db.query<ReceiptSummary>(
     `select r.id, r.status, r.store_name, r.purchase_date::text as purchase_date,
-            r.total_cents, r.traffic_light, r.created_at,
+            r.total_cents, r.traffic_light, r.created_at, r.error, r.duplicate_of,
             (select count(*)::int from app.receipt_items i where i.receipt_id = r.id)
               as item_lines
        from app.receipts r
@@ -314,7 +464,7 @@ function listWhere(filter: Partial<ListFilter>) {
     params.push(value);
     conditions.push(sql.replace("?", `$${params.length}`));
   };
-  if (filter.status) add("r.status = ?", filter.status);
+  if (filter.status?.length) add("r.status = any(?::text[])", filter.status);
   if (filter.minCents != null) add("r.total_cents >= ?", filter.minCents);
   if (filter.maxCents != null) add("r.total_cents <= ?", filter.maxCents);
   if (filter.fromDate) add("r.purchase_date >= ?::date", filter.fromDate);
@@ -328,8 +478,8 @@ function listWhere(filter: Partial<ListFilter>) {
 export async function findReceiptByAccessKey(
   db: Db,
   accessKey: string,
-): Promise<{ id: number; status: "draft" | "confirmed" } | null> {
-  const [row] = await db.query<{ id: number; status: "draft" | "confirmed" }>(
+): Promise<{ id: number; status: ReceiptStatus } | null> {
+  const [row] = await db.query<{ id: number; status: ReceiptStatus }>(
     "select id, status from app.receipts where access_key = $1",
     [accessKey],
   );
@@ -339,12 +489,24 @@ export async function findReceiptByAccessKey(
 export async function getReceiptImage(
   db: Db,
   receiptId: number,
-): Promise<{ mediaType: string; data: Uint8Array } | null> {
-  const [row] = await db.query<{ media_type: string; data: Uint8Array }>(
-    "select media_type, data from app.receipt_images where receipt_id = $1",
+): Promise<PreparedImage | null> {
+  const [row] = await db.query<{
+    media_type: string;
+    data: Uint8Array;
+    width: number;
+    height: number;
+  }>(
+    "select media_type, data, width, height from app.receipt_images where receipt_id = $1",
     [receiptId],
   );
-  return row ? { mediaType: row.media_type, data: row.data } : null;
+  return row
+    ? {
+        mediaType: "image/jpeg",
+        data: Buffer.from(row.data),
+        width: row.width,
+        height: row.height,
+      }
+    : null;
 }
 
 export async function deleteReceipt(db: Db, id: number): Promise<boolean> {
@@ -493,8 +655,11 @@ export async function confirmReceipt(
         ],
       );
     }
+    // Confirmar uma "possível repetida" é dizer que ela não é repetida.
     await tx.query(
-      "update app.receipts set status = 'confirmed', confirmed_at = now() where id = $1",
+      `update app.receipts set status = 'confirmed', confirmed_at = now(),
+              duplicate_of = null, duplicate_reason = null
+        where id = $1`,
       [id],
     );
   });

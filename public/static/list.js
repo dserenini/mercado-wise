@@ -42,7 +42,9 @@ function query() {
   const params = new URLSearchParams();
   for (const [key, value] of new FormData(form)) {
     const v = String(value).trim();
-    if (v !== "" && !(key === "ordem_data" && v === "novas"))
+    if (key === "status")
+      params.append(key, v); // vários
+    else if (v !== "" && !(key === "ordem_data" && v === "novas"))
       params.set(key, v);
   }
   return params.toString();
@@ -57,7 +59,9 @@ async function apply() {
     const res = await fetch(url, { signal: pending.signal });
     if (!res.ok) return;
     const page = new DOMParser().parseFromString(await res.text(), "text/html");
-    results.innerHTML = page.getElementById("results").innerHTML;
+    const fresh = page.getElementById("results");
+    results.innerHTML = fresh.innerHTML;
+    results.toggleAttribute("data-reading", fresh.hasAttribute("data-reading"));
     document.querySelector("[data-filter-count]").textContent =
       page.querySelector("[data-filter-count]").textContent;
   } catch {
@@ -75,8 +79,24 @@ form.addEventListener("submit", (event) => {
   schedule(0);
 });
 form.addEventListener("change", (event) => {
-  if (event.target.matches("select, input[type=hidden]")) schedule(0);
+  if (event.target.matches("[name=status]")) {
+    statusSummary();
+    schedule(300); // dá tempo de marcar mais de um
+  } else if (event.target.matches("select, input[type=hidden]")) schedule(0);
 });
+
+// Texto do campo Status: "Todas", os nomes (até 2) ou "N selecionados".
+function statusSummary() {
+  const names = [...form.querySelectorAll("[name=status]:checked")].map((c) =>
+    c.parentElement.textContent.trim(),
+  );
+  form.querySelector("[data-status-summary]").textContent =
+    names.length === 0
+      ? "Todas"
+      : names.length <= 2
+        ? names.join(", ")
+        : `${names.length} selecionados`;
+}
 form.addEventListener("input", (event) => {
   if (event.target.matches("[name=de], [name=ate]")) {
     syncSlider();
@@ -316,16 +336,30 @@ for (const field of form.querySelectorAll("[data-date-field]")) {
 
 document.addEventListener("click", (event) => {
   if (picker && !picker.field.contains(event.target)) closePicker();
+  // Fecha a lista de status ao clicar fora dela.
+  const dropdown = form.querySelector("[data-status-dropdown]");
+  if (dropdown.open && !dropdown.contains(event.target)) dropdown.open = false;
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closePicker();
 });
 
+// Enquanto houver nota sendo lida, atualiza a lista a cada 5 s (para quando todas
+// terminarem: o servidor deixa de marcar data-reading).
+setInterval(async () => {
+  if (results.hasAttribute("data-reading") && !picker) await apply();
+}, 5000);
+
 // "Limpar filtros": zera tudo sem recarregar a página.
 form.querySelector("[data-clear]").addEventListener("click", (event) => {
   event.preventDefault();
   form.reset();
-  for (const el of form.querySelectorAll("input[name], select")) el.value = "";
+  for (const el of form.querySelectorAll(
+    "input[name]:not([type=checkbox]), select",
+  ))
+    el.value = "";
+  for (const box of form.querySelectorAll("[name=status]")) box.checked = false;
+  statusSummary();
   form.querySelector("[name=ordem_data]").value = "novas";
   for (const field of form.querySelectorAll("[data-date-field]")) {
     const button = field.querySelector("button");

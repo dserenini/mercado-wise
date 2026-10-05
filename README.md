@@ -52,6 +52,7 @@ npm run interpret -- nota.read.json          # interpreta leituras salvas (usa a
 npm run import-saved -- pasta/               # leituras salvas → rascunhos (sem API)
 npm run seed-memory -- gabarito.json         # gabarito revisado → memória (sem API)
 npm run report -- --dolar 5,40               # critérios da Fase 8: IA × revisão (sem API)
+npm run backfill-hashes                      # impressão digital das fotos antigas (sem API)
 ```
 
 Fotos de notas reais ficam em `eval/fixtures/`, resultados em `eval/out/` e o

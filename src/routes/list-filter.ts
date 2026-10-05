@@ -1,6 +1,7 @@
 import type {
   ListFilter,
   ListOrder,
+  ReceiptStatus,
   ReceiptSummary,
 } from "../db/receipts-repo.js";
 import { parseDecimal, toCents } from "../lib/money.js";
@@ -17,7 +18,8 @@ import { parseDecimal, toCents } from "../lib/money.js";
 
 /** O que a tela mostra de volta nos campos (texto como digitado). */
 export interface ListFilterForm {
-  status: string;
+  /** vários: ?status=draft&status=duplicate */
+  status: string[];
   de: string;
   ate: string;
   data_de: string;
@@ -27,11 +29,18 @@ export interface ListFilterForm {
 }
 
 /** Valores padrão, omitidos da URL. */
-const DEFAULTS: Partial<ListFilterForm> = {
+const DEFAULTS: Partial<Record<keyof ListFilterForm, string>> = {
   ordem_data: "novas",
   ordem_valor: "",
 };
 
+const STATUSES: ReceiptStatus[] = [
+  "processing",
+  "failed",
+  "draft",
+  "duplicate",
+  "confirmed",
+];
 const DATE_ORDER = { novas: "desc", antigas: "asc", nenhuma: null } as const;
 const VALUE_ORDER = { caras: "desc", baratas: "asc" } as const;
 
@@ -73,7 +82,12 @@ export function parseListFilter(query: Record<string, unknown>): {
   const ate = valueBounds(text("ate"));
   const dataDe = dateBounds(text("data_de"));
   const dataAte = dateBounds(text("data_ate"));
-  const status = text("status");
+  // Status: vários (parâmetro repetido ou separado por vírgula); só os conhecidos.
+  const rawStatus = query.status;
+  const status = (Array.isArray(rawStatus) ? rawStatus : [rawStatus])
+    .flatMap((v) => (typeof v === "string" ? v.split(",") : []))
+    .map((v) => v.trim());
+  const statuses = STATUSES.filter((s) => status.includes(s));
   const ordemData = Object.hasOwn(DATE_ORDER, text("ordem_data"))
     ? (text("ordem_data") as keyof typeof DATE_ORDER)
     : "novas";
@@ -86,7 +100,7 @@ export function parseListFilter(query: Record<string, unknown>): {
   };
 
   const filter: ListFilter = {
-    status: status === "draft" || status === "confirmed" ? status : null,
+    status: statuses,
     minCents: de?.[0] ?? null,
     maxCents: (ate ?? de)?.[1] ?? null,
     fromDate: dataDe?.[0] ?? null,
@@ -94,7 +108,7 @@ export function parseListFilter(query: Record<string, unknown>): {
     order,
   };
   const form: ListFilterForm = {
-    status: filter.status ?? "",
+    status: statuses,
     de: de ? text("de") : "",
     ate: ate ? text("ate") : "",
     data_de: dataDe ? text("data_de") : "",
@@ -102,9 +116,11 @@ export function parseListFilter(query: Record<string, unknown>): {
     ordem_data: ordemData,
     ordem_valor: ordemValor ?? "",
   };
-  const active = [filter.status, de ?? ate, dataDe ?? dataAte].filter(
-    (v) => v !== null,
-  ).length;
+  const active = [
+    statuses.length > 0 ? statuses : null,
+    de ?? ate,
+    dataDe ?? dataAte,
+  ].filter((v) => v !== null).length;
   return { filter, form, active };
 }
 
@@ -112,7 +128,8 @@ export function parseListFilter(query: Record<string, unknown>): {
 export function filterQuery(form: ListFilterForm): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(form)) {
-    if (value !== "" && value !== DEFAULTS[key as keyof ListFilterForm])
+    if (Array.isArray(value)) for (const v of value) params.append(key, v);
+    else if (value !== "" && value !== DEFAULTS[key as keyof ListFilterForm])
       params.set(key, value);
   }
   return params.toString();

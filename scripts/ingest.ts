@@ -14,20 +14,27 @@ if (!path) {
 const db = connect();
 try {
   const result = await ingestPhoto(db, await readFile(path));
-  if (result.kind === "duplicate") {
+  if (result.kind === "same-photo") {
     console.log(
-      `Nota já cadastrada (#${result.id}, ${result.status}). Nada gravado.`,
+      `Foto já cadastrada (#${result.id}, ${result.status}). Nada gravado.`,
     );
   } else {
     const saved = await getReceipt(db, result.id);
+    const r = saved?.receipt;
     const items = saved?.items ?? [];
     const fromMemory = items.filter(
       (i) => i.interpretation_source === "memory",
     ).length;
-    console.log(
-      `Rascunho #${result.id} gravado — semáforo ${saved?.receipt.traffic_light}, ` +
-        `${items.length} itens, ${fromMemory} vieram da memória.`,
-    );
+    if (r?.status === "failed") console.log(`#${result.id} falhou: ${r.error}`);
+    else if (r?.status === "duplicate")
+      console.log(
+        `#${result.id} parece repetir a #${r.duplicate_of} (${r.duplicate_reason}).`,
+      );
+    else
+      console.log(
+        `Rascunho #${result.id} gravado — semáforo ${r?.traffic_light}, ` +
+          `${items.length} itens, ${fromMemory} vieram da memória.`,
+      );
   }
 } finally {
   await db.close();

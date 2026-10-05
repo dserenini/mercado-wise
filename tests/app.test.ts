@@ -9,7 +9,7 @@ import {
   rememberItem,
   saveDraft,
 } from "../src/db/receipts-repo.js";
-import type { IngestResult } from "../src/services/ingest.js";
+import type { AcceptResult } from "../src/services/ingest.js";
 import { validateReceipt } from "../src/services/validators.js";
 import { testDb } from "./helpers/db.js";
 import { item, receipt, VALID_CNPJ } from "./helpers/receipt.js";
@@ -17,15 +17,17 @@ import { item, receipt, VALID_CNPJ } from "./helpers/receipt.js";
 const PASSWORD = "senha-de-teste";
 let passwordHash: string;
 let db: Db;
-let ingestCalls: Buffer[];
-let ingestResult: IngestResult;
+let accepted: Buffer[];
+let acceptResult: AcceptResult;
+let processed: number[];
 
 beforeAll(async () => {
   passwordHash = await hashPassword(PASSWORD);
 });
 beforeEach(async () => {
   db = await testDb();
-  ingestCalls = [];
+  accepted = [];
+  processed = [];
 });
 afterEach(async () => {
   await db.close();
@@ -34,11 +36,15 @@ afterEach(async () => {
 function app() {
   return createApp({
     db,
-    // Ingestão falsa: nenhum teste chama a IA.
-    ingest: async (photo) => {
-      ingestCalls.push(photo);
-      return ingestResult;
+    // Envio falso: nenhum teste chama a IA.
+    accept: async (photo) => {
+      accepted.push(photo);
+      return acceptResult;
     },
+    process: async (id) => {
+      processed.push(id);
+    },
+    background: () => {},
     passwordHash,
     sessionSecret: "x".repeat(32),
   });
@@ -247,32 +253,38 @@ describe("notas", () => {
 });
 
 describe("upload", () => {
-  it("manda a foto para a ingestão e abre a revisão", async () => {
-    ingestResult = { kind: "saved", id: 42 };
+  const photo = (agent: Awaited<ReturnType<typeof loggedIn>>) =>
+    agent.post("/receipts").attach("photo", Buffer.from("foto"), {
+      filename: "nota.jpg",
+      contentType: "image/jpeg",
+    });
+
+  it("aceita a foto, manda ler em segundo plano e responde JSON ao upload.js", async () => {
+    acceptResult = { kind: "queued", id: 42 };
     const agent = await loggedIn();
-    const res = await agent
-      .post("/receipts")
-      .attach("photo", Buffer.from("foto"), {
-        filename: "nota.jpg",
-        contentType: "image/jpeg",
-      })
-      .expect(303);
-    expect(res.headers.location).toBe("/receipts/42");
-    expect(ingestCalls.map((b) => b.toString())).toEqual(["foto"]);
+    const res = await photo(agent)
+      .set("Accept", "application/json")
+      .expect(200);
+    expect(res.body).toEqual({ results: [{ kind: "queued", id: 42 }] });
+    expect(accepted.map((b) => b.toString())).toEqual(["foto"]);
+    expect(processed).toEqual([42]);
   });
 
-  it("avisa quando a nota já existe", async () => {
-    ingestResult = { kind: "duplicate", id: 7, status: "confirmed" };
+  it("sem JavaScript, volta para a lista", async () => {
+    acceptResult = { kind: "queued", id: 42 };
     const agent = await loggedIn();
-    const res = await agent
-      .post("/receipts")
-      .attach("photo", Buffer.from("foto"), {
-        filename: "nota.jpg",
-        contentType: "image/jpeg",
-      })
-      .expect(409);
-    expect(res.text).toContain("Nota já cadastrada");
-    expect(res.text).toContain("/receipts/7");
+    const res = await photo(agent).expect(303);
+    expect(res.headers.location).toBe("/");
+  });
+
+  it("foto repetida é recusada e não é lida", async () => {
+    acceptResult = { kind: "same-photo", id: 7, status: "confirmed" };
+    const agent = await loggedIn();
+    const res = await photo(agent)
+      .set("Accept", "application/json")
+      .expect(200);
+    expect(res.body.results[0]).toMatchObject({ kind: "same-photo", id: 7 });
+    expect(processed).toEqual([]);
   });
 
   it("recusa envio sem imagem", async () => {
@@ -284,7 +296,48 @@ describe("upload", () => {
         contentType: "text/plain",
       })
       .expect(400);
-    expect(ingestCalls).toEqual([]);
+    expect(accepted).toEqual([]);
+  });
+
+  it("nota lendo mostra a tela de espera; falha permite tentar de novo", async () => {
+    const id = await draft();
+    const agent = await loggedIn();
+    await db.query(
+      "update app.receipts set status = 'processing' where id = $1",
+      [id],
+    );
+    expect((await agent.get(`/receipts/${id}`).expect(200)).text).toContain(
+      "Lendo a nota",
+    );
+
+    await db.query(
+      "update app.receipts set status = 'failed', error = 'deu ruim' where id = $1",
+      [id],
+    );
+    expect((await agent.get(`/receipts/${id}`).expect(200)).text).toContain(
+      "deu ruim",
+    );
+    await agent.post(`/receipts/${id}/retry`).expect(303);
+    expect(processed).toEqual([id]);
+    expect((await getReceipt(db, id))?.receipt.status).toBe("processing");
+  });
+
+  it("possível repetida: aviso na revisão e 'não é repetida' volta a rascunho", async () => {
+    const original = await draft();
+    const copy = await draftWithOtherKey();
+    await db.query(
+      `update app.receipts set status = 'duplicate', duplicate_of = $2,
+              duplicate_reason = '1 de 1 itens iguais' where id = $1`,
+      [copy, original],
+    );
+    const agent = await loggedIn();
+    const list = await agent.get("/").expect(200);
+    expect(list.text).toContain(`repetida? → #${original}`);
+    const review = await agent.get(`/receipts/${copy}`).expect(200);
+    expect(review.text).toContain("Possível nota repetida");
+    expect(review.text).toContain("1 de 1 itens iguais");
+    await agent.post(`/receipts/${copy}/not-duplicate`).expect(303);
+    expect((await getReceipt(db, copy))?.receipt.status).toBe("draft");
   });
 });
 

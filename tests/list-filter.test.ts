@@ -43,7 +43,7 @@ describe("parseListFilter", () => {
   it("sem nada: todas, por data", () => {
     const { filter, active } = parseListFilter({});
     expect(filter).toEqual({
-      status: null,
+      status: [],
       minCents: null,
       maxCents: null,
       fromDate: null,
@@ -72,7 +72,7 @@ describe("parseListFilter", () => {
       ordem_valor: "caras",
     });
     expect(filter).toEqual({
-      status: "confirmed",
+      status: ["confirmed"],
       minCents: 5000,
       maxCents: 10000,
       fromDate: "2025-01-01",
@@ -92,13 +92,24 @@ describe("parseListFilter", () => {
       ordem_valor: "x",
     });
     expect(filter).toMatchObject({
-      status: null,
+      status: [],
       minCents: null,
       maxCents: null,
       fromDate: null,
       order: { date: "desc", value: null },
     });
     expect(form.de).toBe("");
+  });
+
+  it("status: vários, repetidos ou separados por vírgula; ignora os desconhecidos", () => {
+    expect(
+      parseListFilter({ status: ["draft", "duplicate", "x"] }).filter.status,
+    ).toEqual(["draft", "duplicate"]);
+    expect(
+      parseListFilter({ status: "failed,confirmed" }).filter.status,
+    ).toEqual(["failed", "confirmed"]);
+    const { form } = parseListFilter({ status: ["draft", "duplicate"] });
+    expect(filterQuery(form)).toBe("status=draft&status=duplicate");
   });
 
   it("filterQuery devolve só os filtros preenchidos (sem os padrões)", () => {
@@ -158,8 +169,11 @@ describe("listReceipts com filtros", () => {
     expect(await totals({})).toEqual([6613, 22320, 1649, 1000]);
   });
 
-  it("status", async () => {
+  it("status (um ou vários)", async () => {
     expect(await totals({ status: "confirmed" })).toEqual([22320]);
+    expect(await totals({ status: "confirmed,draft" })).toEqual([
+      6613, 22320, 1649, 1000,
+    ]);
   });
 
   it("valor: só 'de' (real inteiro ou exato) e faixa", async () => {

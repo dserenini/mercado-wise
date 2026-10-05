@@ -6,34 +6,69 @@ const MAX_PIXELS = 3_750_000;
 
 const form = document.getElementById("upload-form");
 const input = form.querySelector('input[type="file"]');
-const status = document.getElementById("upload-status");
+const list = document.getElementById("upload-list");
+const done = document.getElementById("upload-done");
 
+// Várias fotos: envia uma por vez (cada envio leva 1–2 s; a leitura de cada nota
+// roda depois, no servidor). Cada foto ganha uma linha com o resultado.
 input.addEventListener("change", async () => {
-  const file = input.files?.[0];
-  if (!file) return;
+  const files = [...(input.files ?? [])];
+  if (files.length === 0) return;
   form.setAttribute("aria-busy", "true");
-  status.textContent = "Preparando a foto…";
+  input.disabled = true;
+  done.hidden = true;
+  list.replaceChildren();
+
+  let rejected = 0;
+  for (const file of files) {
+    const row = document.createElement("li");
+    row.textContent = `${file.name}: enviando…`;
+    list.append(row);
+    const result = await send(file);
+    row.replaceChildren(...describe(file.name, result));
+    if (result.kind !== "queued") rejected += 1;
+  }
+
+  form.removeAttribute("aria-busy");
+  input.disabled = false;
+  input.value = "";
+  done.hidden = false;
+  // Tudo aceito: vai para a lista, onde as notas aparecem como "lendo…".
+  if (rejected === 0) setTimeout(() => location.assign("/"), 800);
+});
+
+async function send(file) {
   try {
     // Se o navegador não conseguir decodificar a imagem, vai a original.
     const photo = await shrink(file).catch(() => file);
     const body = new FormData();
     body.append("photo", photo, "nota.jpg");
-    status.textContent =
-      "Lendo a nota… pode levar até 1 minuto. Não feche esta tela.";
-    const res = await fetch(form.action, { method: "POST", body });
-    if (res.redirected) {
-      location.href = res.url;
-      return;
-    }
-    // Duplicata ou erro: o servidor devolveu uma página; mostra ela.
-    document.open();
-    document.write(await res.text());
-    document.close();
+    const res = await fetch(form.action, {
+      method: "POST",
+      body,
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return { kind: "error", message: `erro ${res.status}` };
+    const { results } = await res.json();
+    return results[0];
   } catch (error) {
-    form.removeAttribute("aria-busy");
-    status.textContent = `Falhou: ${error.message}. Verifique a conexão e tente de novo.`;
+    return { kind: "error", message: `sem conexão (${error.message})` };
   }
-});
+}
+
+function describe(name, result) {
+  const link = (id) => {
+    const a = document.createElement("a");
+    a.href = `/receipts/${id}`;
+    a.textContent = `#${id}`;
+    return a;
+  };
+  if (result.kind === "queued")
+    return [`✓ ${name}: enviada, lendo… (nota `, link(result.id), ")"];
+  if (result.kind === "same-photo")
+    return [`⟳ ${name}: foto repetida, já é a nota `, link(result.id)];
+  return [`✗ ${name}: ${result.message}`];
+}
 
 async function shrink(file) {
   // from-image: aplica a rotação EXIF da câmera antes de desenhar.
