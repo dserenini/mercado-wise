@@ -7,12 +7,16 @@ import { authRoutes, requireLogin } from "./routes/auth.js";
 import { receiptRoutes } from "./routes/receipts.js";
 import { suggestRoutes } from "./routes/suggest.js";
 import { CATEGORIES } from "./schemas/interpretation.js";
-import type { IngestResult } from "./services/ingest.js";
+import type { AcceptResult } from "./services/ingest.js";
 
 export interface AppDeps {
   db: Db;
-  /** foto → rascunho no banco (nos testes, uma versão falsa que não chama a IA) */
-  ingest: (photo: Buffer) => Promise<IngestResult>;
+  /** foto → nota "lendo…" no banco, ou recusa por foto repetida */
+  accept: (photo: Buffer) => Promise<AcceptResult>;
+  /** lê a nota em segundo plano (nos testes, uma versão falsa que não chama a IA) */
+  process: (id: number) => Promise<void>;
+  /** mantém a tarefa rodando depois da resposta (na Vercel, waitUntil) */
+  background: (task: Promise<unknown>) => void;
   passwordHash: string;
   sessionSecret: string;
   /** atrás de HTTPS (produção): cookie só via HTTPS e IP real vindo do proxy */

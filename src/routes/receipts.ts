@@ -2,15 +2,18 @@ import { type Request, Router } from "express";
 import multer from "multer";
 import type { AppDeps } from "../create-app.js";
 import {
+  clearDuplicate,
   confirmReceipt,
   deleteReceipt,
+  failStaleReads,
   getReceipt,
   getReceiptImage,
   listBounds,
   listReceipts,
+  requeue,
 } from "../db/receipts-repo.js";
 import { storeNames } from "../db/suggest-repo.js";
-import { ReadError } from "../services/reader.js";
+import { KEY_DUPLICATE_REASON } from "../services/ingest.js";
 import { withLineMath, withMemory } from "../services/review.js";
 import { filterQuery, groupByMonth, parseListFilter } from "./list-filter.js";
 import { parseReviewForm } from "./review-form.js";
@@ -20,15 +23,22 @@ import { parseReviewForm } from "./review-form.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  // O navegador já reduz a foto (~300 KB); o limite cobre o caso sem JavaScript.
-  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+  // O navegador já reduz a foto (~300 KB) e manda uma por vez; os limites cobrem o
+  // envio sem JavaScript (várias fotos originais num formulário só).
+  limits: { fileSize: 15 * 1024 * 1024, files: 30 },
   fileFilter: (_req, file, cb) => cb(null, file.mimetype.startsWith("image/")),
 });
 
-export function receiptRoutes({ db, ingest }: AppDeps): Router {
+export function receiptRoutes({
+  db,
+  accept,
+  process,
+  background,
+}: AppDeps): Router {
   const router = Router();
 
   router.get("/", async (req, res) => {
+    await failStaleReads(db);
     const { filter, form, active } = parseListFilter(req.query);
     // Lembra os filtros para voltar a eles depois de abrir/confirmar uma nota.
     if (req.session) req.session.listQuery = filterQuery(form);
@@ -62,41 +72,52 @@ export function receiptRoutes({ db, ingest }: AppDeps): Router {
     res.render("upload", { error: null });
   });
 
-  router.post("/receipts", upload.single("photo"), async (req, res) => {
-    if (!req.file) {
+  // Uma ou várias fotos. Cada foto vira uma nota "lendo…" e é lida em segundo
+  // plano; foto já cadastrada é recusada sem gastar a leitura. O upload.js manda uma
+  // foto por vez e recebe JSON; sem JavaScript, volta para a lista.
+  router.post("/receipts", upload.array("photo"), async (req, res) => {
+    const files = Array.isArray(req.files) ? req.files : [];
+    if (files.length === 0) {
       res
         .status(400)
         .render("upload", { error: "Envie a foto da nota (imagem)." });
       return;
     }
-    try {
-      const result = await ingest(req.file.buffer);
-      if (result.kind === "duplicate") {
-        res.status(409).render("message", {
-          title: "Nota já cadastrada",
-          message: `Esta nota já está no app (#${result.id}, ${result.status === "confirmed" ? "confirmada" : "rascunho"}).`,
-          link: { href: `/receipts/${result.id}`, label: "Abrir a nota" },
+    const results = [];
+    for (const file of files) {
+      try {
+        const result = await accept(file.buffer);
+        if (result.kind === "queued") background(process(result.id));
+        results.push(result);
+      } catch (error) {
+        console.error(error);
+        results.push({
+          kind: "error" as const,
+          message: "Não deu para abrir esta imagem.",
         });
-        return;
       }
-      res.redirect(303, `/receipts/${result.id}`);
-    } catch (error) {
-      // ReadError: o modelo recusou ou a resposta veio cortada (nota longa demais?).
-      const message =
-        error instanceof ReadError
-          ? error.message
-          : "Não foi possível ler a nota agora. Tente de novo em instantes.";
-      if (!(error instanceof ReadError)) console.error(error);
-      res.status(502).render("upload", { error: message });
     }
+    if (req.accepts(["html", "json"]) === "json") res.json({ results });
+    else res.redirect(303, listUrl(req));
   });
 
   router.get("/receipts/:id", async (req, res) => {
+    await failStaleReads(db);
     const saved = await getReceipt(db, Number(req.params.id));
     if (!saved) {
       res
         .status(404)
         .render("message", { title: "Nota não encontrada", message: "" });
+      return;
+    }
+    // Ainda lendo, falhou ou repetida pela chave (sem itens): tela de situação.
+    const { status, duplicate_reason } = saved.receipt;
+    if (
+      status === "processing" ||
+      status === "failed" ||
+      duplicate_reason === KEY_DUPLICATE_REASON
+    ) {
+      res.render("pending", { receipt: saved.receipt, back: listUrl(req) });
       return;
     }
     res.render("review", {
@@ -141,9 +162,22 @@ export function receiptRoutes({ db, ingest }: AppDeps): Router {
     }
     await confirmReceipt(db, id, form.items, form.header);
     // De volta à lista (com os filtros de antes), com o aviso do que foi salvo.
-    const kind = before.receipt.status === "draft" ? "confirmada" : "corrigida";
+    const kind =
+      before.receipt.status === "confirmed" ? "corrigida" : "confirmada";
     const back = listUrl(req);
     res.redirect(303, `${back}${back.includes("?") ? "&" : "?"}${kind}=${id}`);
+  });
+
+  router.post("/receipts/:id/retry", async (req, res) => {
+    const id = Number(req.params.id);
+    if (await requeue(db, id)) background(process(id));
+    res.redirect(303, listUrl(req));
+  });
+
+  router.post("/receipts/:id/not-duplicate", async (req, res) => {
+    const id = Number(req.params.id);
+    await clearDuplicate(db, id);
+    res.redirect(303, `/receipts/${id}`);
   });
 
   router.post("/receipts/:id/delete", async (req, res) => {

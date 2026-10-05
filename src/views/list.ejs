@@ -1,6 +1,11 @@
 <%- include("partials/top", { title: "Notas" }) %>
 <%
   const selected = (field, value) => (String(form[field]) === String(value) ? "selected" : "");
+  const STATUS_NAMES = [["draft", "Rascunho"], ["confirmed", "Confirmada"],
+    ["duplicate", "Possível repetida"], ["processing", "Lendo"], ["failed", "Falhou"]];
+  const picked = STATUS_NAMES.filter(([value]) => form.status.includes(value)).map(([, name]) => name);
+  const statusSummary = picked.length === 0 ? "Todas"
+    : picked.length <= 2 ? picked.join(", ") : `${picked.length} selecionados`;
   // Topo da barra de valor: a maior nota, arredondada para cima em reais.
   const sliderMax = Math.max(1, Math.ceil(bounds.maxCents / 100));
 %>
@@ -21,13 +26,21 @@
         data-today="<%= new Date().toISOString().slice(0, 10) %>"
         data-first-year="<%= bounds.firstYear || new Date().getFullYear() %>">
     <div class="filter-grid">
-      <label>Status
-        <select name="status">
-          <option value="">Todas</option>
-          <option value="draft" <%= selected("status", "draft") %>>Rascunho</option>
-          <option value="confirmed" <%= selected("status", "confirmed") %>>Confirmada</option>
-        </select>
-      </label>
+      <%# Status: vários de uma vez (dropdown do Pico com caixas de seleção). %>
+      <div class="status-field">
+        <span class="field-label">Status</span>
+        <details class="dropdown" data-status-dropdown>
+          <summary data-status-summary><%= statusSummary %></summary>
+          <ul>
+            <% for (const [value, name] of STATUS_NAMES) { %>
+              <li><label>
+                <input type="checkbox" name="status" value="<%= value %>" <%= form.status.includes(value) ? "checked" : "" %>>
+                <%= name %>
+              </label></li>
+            <% } %>
+          </ul>
+        </details>
+      </div>
       <label>Ordenar por data
         <select name="ordem_data">
           <option value="novas" <%= selected("ordem_data", "novas") %>>Mais novas primeiro</option>
@@ -79,7 +92,8 @@
   </form>
 </details>
 
-<div id="results" aria-live="polite">
+<%# data-reading: o list.js atualiza a lista sozinho enquanto houver nota sendo lida. %>
+<div id="results" aria-live="polite" <%= receipts.some((r) => r.status === "processing") ? "data-reading" : "" %>>
   <p class="list-summary">
     <%= receipts.length %> <%= receipts.length === 1 ? "nota" : "notas" %> · <strong><%= formatCents(totalCents) %></strong>
   </p>
@@ -99,15 +113,27 @@
       <a href="/receipts/<%= r.id %>" class="receipt-row">
         <article>
           <div class="row-head">
-            <strong><%= r.store_name || "Mercado não identificado" %></strong>
+            <strong><%= r.store_name || (["processing", "failed"].includes(r.status) ? `Nota #${r.id}` : "Mercado não identificado") %></strong>
             <span><%= r.total_cents === null ? "—" : formatCents(r.total_cents) %></span>
           </div>
           <div class="row-meta">
-            <span><%= r.purchase_date ? r.purchase_date.split("-").reverse().join("/") : "sem data" %> · <%= r.item_lines %> itens</span>
+            <% if (r.status === "processing") { %>
+              <span>enviada às <%= r.created_at.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) %></span>
+            <% } else if (r.status === "failed") { %>
+              <span><%= r.error || "leitura falhou" %></span>
+            <% } else { %>
+              <span><%= r.purchase_date ? r.purchase_date.split("-").reverse().join("/") : "sem data" %> · <%= r.item_lines %> itens</span>
+            <% } %>
             <% if (r.status === "draft") { %>
               <span class="badge draft">revisar</span> <%- include("partials/light", { light: r.traffic_light }) %>
-            <% } else { %>
+            <% } else if (r.status === "confirmed") { %>
               <span class="badge done">confirmada</span>
+            <% } else if (r.status === "duplicate") { %>
+              <span class="badge bad">repetida? → #<%= r.duplicate_of %></span>
+            <% } else if (r.status === "processing") { %>
+              <span class="badge reading">lendo…</span>
+            <% } else { %>
+              <span class="badge bad">falhou</span>
             <% } %>
           </div>
         </article>

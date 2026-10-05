@@ -13,13 +13,30 @@
 <hgroup>
   <h1><%= r.store_name || "Mercado não identificado" %></h1>
   <p>
-    <% if (r.status === "draft") { %>
+    <% if (r.status !== "confirmed") { %>
       Revise e confirme. <%- include("partials/light", { light: r.traffic_light }) %>
     <% } else { %>
       Nota confirmada<%= r.confirmed_at ? " em " + r.confirmed_at.toLocaleDateString("pt-BR") : "" %>. Você pode corrigir e salvar de novo.
     <% } %>
   </p>
 </hgroup>
+
+<% if (r.status === "duplicate") { %>
+  <div class="duplicate-box">
+    <strong>Possível nota repetida</strong> da
+    <a href="/receipts/<%= r.duplicate_of %>">nota #<%= r.duplicate_of %></a>:
+    <%= r.duplicate_reason %>.
+    <div class="duplicate-actions">
+      <form method="post" action="/receipts/<%= r.id %>/delete" class="inline"
+            onsubmit="return confirm('Excluir esta nota (a repetida)?')">
+        <button type="submit" class="secondary outline danger">Excluir esta (é repetida)</button>
+      </form>
+      <form method="post" action="/receipts/<%= r.id %>/not-duplicate" class="inline">
+        <button type="submit" class="secondary outline">Não é repetida</button>
+      </form>
+    </div>
+  </div>
+<% } %>
 
 <% if (errors.length > 0) { %>
   <div class="error-box">
@@ -87,7 +104,13 @@
     <span data-diff-wrap>Diferença <strong data-diff>—</strong></span>
   </div>
 
-  <button type="submit"><%= r.status === "draft" ? "Confirmar nota" : "Salvar correções" %></button>
+  <div class="review-actions">
+    <button type="submit"><%= r.status === "confirmed" ? "Salvar correções" : "Confirmar nota" %></button>
+    <% if (r.status !== "confirmed") { %>
+      <%# O rascunho já está salvo: dá para sair e revisar depois. %>
+      <a href="<%= back %>" role="button" class="secondary outline">Revisar depois</a>
+    <% } %>
+  </div>
 </form>
 
 <form method="post" action="/receipts/<%= r.id %>/delete"

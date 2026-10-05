@@ -23,7 +23,7 @@ export async function withMemory<
   saved: T,
   memory: InterpretationMemory = createDbMemory(db),
 ): Promise<T> {
-  if (saved.receipt.status !== "draft") return saved;
+  if (saved.receipt.status === "confirmed") return saved;
   const store = {
     name: saved.receipt.store_name,
     cnpj: saved.receipt.store_cnpj,
@@ -89,7 +89,7 @@ function productFields(r: RememberedItem) {
 export function withLineMath<
   T extends { receipt: ReceiptRow; items: ItemRow[] },
 >(saved: T): T {
-  if (saved.receipt.status !== "draft") return saved;
+  if (saved.receipt.status === "confirmed") return saved;
   const reais = (c: number | null) => (c === null ? null : c / 100);
   const cents = (v: number | null) => (v === null ? null : toCents(v));
 
