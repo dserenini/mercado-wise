@@ -644,3 +644,46 @@ details.item .fields .suggested {
 .store-pin:focus-visible .store-pin-head {
   box-shadow: 0 0 0 3px var(--pico-primary-focus);
 }
+
+/* Preço ao longo do tempo (página do produto) */
+.price-chart > svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.price-chart .grid {
+  stroke: var(--pico-muted-border-color);
+}
+.price-chart .tick {
+  fill: var(--pico-muted-color);
+  font-size: 12px;
+}
+.price-chart .trend {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-opacity: 0.6;
+}
+.price-chart .point {
+  stroke: var(--pico-background-color);
+  stroke-width: 2;
+}
+.price-chart figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.9em;
+}
+.legend-shape svg {
+  fill: var(--pico-muted-color);
+  vertical-align: middle;
+}
+.swatch {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  margin-right: 0.35rem;
+}
+.table-scroll {
+  overflow-x: auto;
+}

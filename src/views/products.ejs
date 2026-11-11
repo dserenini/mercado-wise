@@ -1,0 +1,30 @@
+<%- include("partials/top", { title: "Produtos" }) %>
+<%
+  const date = (d) => (d ? d.split("-").reverse().join("/") : "—");
+  const per = (u) => (u === "kg" ? "/kg" : "");
+%>
+<h1>Produtos</h1>
+<p class="muted">Preço de cada produto nas notas confirmadas, suas e de todos. Escolha um para ver como o preço mudou.</p>
+
+<form method="get" action="/products" role="search">
+  <input type="search" name="q" value="<%= q %>" placeholder="Buscar produto, marca ou variante" aria-label="Buscar produto" autofocus>
+</form>
+
+<% if (products.length === 0) { %>
+  <p><%= q ? "Nenhum produto com esse nome nas notas confirmadas." : "Nenhuma nota confirmada ainda: os produtos aparecem quando uma nota é confirmada." %></p>
+<% } %>
+<% for (const p of products) { %>
+  <a href="/products/<%= p.id %>" class="receipt-row">
+    <article>
+      <div class="row-head">
+        <strong><%- include("partials/product-name", { p }) %></strong>
+        <span><%= p.last_price_cents === null ? "—" : formatCents(p.last_price_cents) + per(p.last_unit) %></span>
+      </div>
+      <div class="row-meta">
+        <span><%= p.category %></span>
+        <span><%= p.purchases %> <%= p.purchases === 1 ? "compra" : "compras" %> · última em <%= date(p.last_purchase) %></span>
+      </div>
+    </article>
+  </a>
+<% } %>
+<%- include("partials/bottom") %>

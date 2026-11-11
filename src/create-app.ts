@@ -5,6 +5,7 @@ import type { Db } from "./db/client.js";
 import { keepAlive } from "./db/keepalive.js";
 import { centsToInput, decimalToInput, formatCents } from "./lib/money.js";
 import { authRoutes, requireLogin } from "./routes/auth.js";
+import { productRoutes } from "./routes/products.js";
 import { receiptRoutes } from "./routes/receipts.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { storeRoutes } from "./routes/stores.js";
@@ -90,6 +91,7 @@ export function createApp(deps: AppDeps) {
   app.use(suggestRoutes(deps));
   app.use(settingsRoutes(deps));
   app.use(storeRoutes(deps));
+  app.use(productRoutes(deps));
 
   app.use((_req, res) => {
     res.status(404).render("message", {

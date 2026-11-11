@@ -1,0 +1,97 @@
+<%- include("partials/top", { title: product.product }) %>
+<%
+  const date = (d) => d.split("-").reverse().join("/");
+  const per = chart && chart.unit === "kg" ? "/kg" : "";
+  const money = (c) => formatCents(c) + per;
+  const me = currentUser;
+%>
+<a href="/products" class="back-link">← Produtos</a>
+
+<hgroup>
+  <h1><%- include("partials/product-name", { p: product }) %></h1>
+  <p><%= product.category %> · preço <%= chart && chart.unit === "kg" ? "por kg" : "por unidade" %>, nas notas confirmadas de todos</p>
+</hgroup>
+
+<% if (!chart) { %>
+  <p>Nenhuma compra confirmada deste produto com data e preço.</p>
+<% } else { const s = chart.stats; %>
+  <section class="store-stats" aria-label="Resumo do preço">
+    <div><strong><%= money(s.lastCents) %></strong><small>último</small></div>
+    <div><strong><%= money(s.minCents) %></strong><small>menor</small></div>
+    <div><strong><%= money(s.maxCents) %></strong><small>maior</small></div>
+    <div><strong><%= money(s.avgCents) %></strong><small>média</small></div>
+    <div><strong><%= s.count %></strong><small><%= s.count === 1 ? "compra" : "compras" %> · <%= chart.stores.length %> <%= chart.stores.length === 1 ? "mercado" : "mercados" %> · <%= s.users %> <%= s.users === 1 ? "pessoa" : "pessoas" %></small></div>
+  </section>
+
+  <%# Gráfico: um ponto por compra (cor = mercado; círculo = sua nota, losango = de
+      outra pessoa) e uma linha por mercado. A tabela abaixo tem os mesmos dados. %>
+  <figure class="price-chart">
+    <svg viewBox="0 0 640 260" role="img"
+         aria-label="Preço de <%= product.product %> ao longo do tempo: de <%= money(s.minCents) %> a <%= money(s.maxCents) %>, último <%= money(s.lastCents) %>. Detalhes na tabela abaixo.">
+      <% for (const t of chart.yTicks) { %>
+        <line class="grid" x1="64" x2="624" y1="<%= t.y %>" y2="<%= t.y %>" />
+        <text class="tick" x="58" y="<%= t.y %>" text-anchor="end" dominant-baseline="middle"><%= formatCents(t.cents) %></text>
+      <% } %>
+      <% for (const t of chart.xTicks) { %>
+        <text class="tick" x="<%= t.x %>" y="248" text-anchor="<%= t.anchor %>"><%= t.label %></text>
+      <% } %>
+      <% for (const st of chart.stores) { %>
+        <path class="trend" d="<%= st.path %>" stroke="<%= st.color %>" />
+      <% } %>
+      <% for (const p of chart.points) { %>
+        <a href="/receipts/<%= p.receipt_id %>">
+          <title><%= date(p.purchase_date) %> · <%= p.store_name %> · <%= money(p.unit_price_cents) %> · <%= p.mine ? "sua nota" : "nota de " + p.owner %></title>
+          <% if (p.mine) { %>
+            <circle class="point" cx="<%= p.x %>" cy="<%= p.y %>" r="6" fill="<%= p.color %>" />
+          <% } else { %>
+            <rect class="point" x="<%= p.x - 5 %>" y="<%= p.y - 5 %>" width="10" height="10" fill="<%= p.color %>" transform="rotate(45 <%= p.x %> <%= p.y %>)" />
+          <% } %>
+        </a>
+      <% } %>
+    </svg>
+    <figcaption>
+      <span class="legend-shape"><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="5" /></svg> suas notas</span>
+      <span class="legend-shape"><svg width="12" height="12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" transform="rotate(45 6 6)" /></svg> de outras pessoas</span>
+      <% if (chart.otherUnit > 0) { %><span class="muted"><%= chart.otherUnit %> compra(s) em outra unidade só na tabela.</span><% } %>
+    </figcaption>
+  </figure>
+
+  <h2>Por mercado</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th scope="col">Mercado</th><th scope="col">Compras</th><th scope="col">Menor</th><th scope="col">Média</th><th scope="col">Último</th></tr></thead>
+      <tbody>
+        <% for (const st of chart.stores) { %>
+          <tr>
+            <th scope="row"><span class="swatch" style="background: <%= st.color %>" aria-hidden="true"></span>
+              <% if (st.cnpj) { %><a href="/stores/<%= st.cnpj %>"><%= st.name %></a><% } else { %><%= st.name %><% } %></th>
+            <td><%= st.count %></td>
+            <td><%= money(st.minCents) %></td>
+            <td><%= money(st.avgCents) %></td>
+            <td><%= money(st.lastCents) %></td>
+          </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Todas as compras</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th scope="col">Data</th><th scope="col">Mercado</th><th scope="col">De</th><th scope="col">Qtd</th><th scope="col">Preço</th><th scope="col">Nota</th></tr></thead>
+      <tbody>
+        <% for (const p of [...prices].reverse()) { %>
+          <tr>
+            <td><%= date(p.purchase_date) %></td>
+            <td><%= p.store_name %></td>
+            <td><%= p.user_id === me.id ? "você" : p.owner %></td>
+            <td><%= p.quantity === null ? "—" : decimalToInput(p.quantity) + (p.unit === "kg" ? " kg" : "") %></td>
+            <td><%= formatCents(p.unit_price_cents) %><%= p.unit === "kg" ? "/kg" : "" %><% if (p.discount_cents) { %> <small class="muted">(−<%= formatCents(p.discount_cents) %> desc.)</small><% } %></td>
+            <td><a href="/receipts/<%= p.receipt_id %>">#<%= p.receipt_id %></a></td>
+          </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+<%- include("partials/bottom") %>

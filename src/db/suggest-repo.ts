@@ -17,7 +17,7 @@ export interface ItemSuggestion {
 // Minúsculas e sem acento dos dois lados: "acucar" encontra "Açúcar".
 const ACCENTED = "áàâãäéèêëíìîïóòôõöúùûüç";
 const PLAIN = "aaaaaeeeeiiiiooooouuuuc";
-const fold = (sql: string) =>
+export const fold = (sql: string) =>
   `translate(lower(${sql}), '${ACCENTED}', '${PLAIN}')`;
 
 export function foldText(text: string): string {
