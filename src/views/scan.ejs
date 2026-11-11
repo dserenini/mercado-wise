@@ -1,0 +1,38 @@
+<%- include("partials/top", { title: "Escanear nota comprida" }) %>
+<a href="/receipts/new" class="back-link">← Enviar notas</a>
+<h1>Escanear nota comprida</h1>
+<p><span class="badge reading">experimental</span> Para nota que não cabe numa foto: a câmera tira os trechos sozinha enquanto você
+  desce do topo até o fim. <strong>Protótipo:</strong> por enquanto só mostra os trechos
+  capturados, ainda não envia.</p>
+
+<button type="button" id="scan-start">📷 Começar</button>
+
+<section id="scan-camera" hidden>
+  <div class="scan-view">
+    <video id="scan-video" playsinline muted aria-label="Câmera"></video>
+    <%# Rodapé do trecho anterior, apagado no topo: encaixe o papel nele. %>
+    <img id="scan-ghost" class="scan-ghost" alt="" hidden>
+  </div>
+  <p id="scan-hint" class="scan-hint" role="status" aria-live="polite"></p>
+  <p id="scan-debug" class="muted" hidden></p>
+  <div class="scan-actions">
+    <button type="button" class="secondary" id="scan-shoot">Tirar agora</button>
+    <button type="button" class="secondary outline" id="scan-undo" disabled>Refazer último</button>
+    <button type="button" class="secondary outline" id="scan-torch" aria-pressed="false" hidden>Lanterna</button>
+    <button type="button" id="scan-done" disabled>Terminei</button>
+  </div>
+  <p><strong id="scan-count">0 trechos</strong></p>
+  <div id="scan-thumbs" class="scan-thumbs" aria-label="Trechos capturados"></div>
+</section>
+
+<section id="scan-review" hidden>
+  <h2>Trechos capturados</h2>
+  <p id="scan-summary"></p>
+  <p class="muted">Confira se dá para ler tudo e se cada trecho repete um pedacinho do anterior.
+    Na próxima etapa, eles vão juntos para a leitura como uma nota só.</p>
+  <div id="scan-stack" class="scan-stack"></div>
+  <button type="button" id="scan-restart" class="secondary">Escanear de novo</button>
+</section>
+
+<script type="module" src="/static/scan.js?v=<%= assetVersion %>"></script>
+<%- include("partials/bottom") %>

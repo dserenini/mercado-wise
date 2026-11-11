@@ -81,6 +81,11 @@ export function receiptRoutes({
     return typeof query === "string" && query !== "" ? `/?${query}` : "/";
   };
 
+  // Protótipo: escanear nota comprida em trechos (ainda não envia).
+  router.get("/receipts/scan", (_req, res) => {
+    res.render("scan");
+  });
+
   router.get("/receipts/new", (_req, res) => {
     res.render("upload", { error: null });
   });
