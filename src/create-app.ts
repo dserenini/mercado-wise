@@ -6,6 +6,7 @@ import { keepAlive } from "./db/keepalive.js";
 import { centsToInput, decimalToInput, formatCents } from "./lib/money.js";
 import { authRoutes, requireLogin } from "./routes/auth.js";
 import { receiptRoutes } from "./routes/receipts.js";
+import { settingsRoutes } from "./routes/settings.js";
 import { suggestRoutes } from "./routes/suggest.js";
 import { CATEGORIES } from "./schemas/interpretation.js";
 import type { AcceptResult } from "./services/ingest.js";
@@ -82,6 +83,7 @@ export function createApp(deps: AppDeps) {
   app.use(requireLogin);
   app.use(receiptRoutes(deps));
   app.use(suggestRoutes(deps));
+  app.use(settingsRoutes(deps));
 
   app.use((_req, res) => {
     res.status(404).render("message", {

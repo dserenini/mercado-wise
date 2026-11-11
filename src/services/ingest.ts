@@ -13,6 +13,8 @@ import {
   photoHashes,
   type ReceiptStatus,
 } from "../db/receipts-repo.js";
+import { resolveAi } from "./ai-settings.js";
+import { aiClient } from "./claude.js";
 import {
   hashDistance,
   imageHash,
@@ -76,7 +78,16 @@ export async function processReceipt(
     const image = await getReceiptImage(db, id);
     if (!image) throw new Error("A foto da nota não foi encontrada.");
 
-    const read = await (options.read ?? readReceipt)(image);
+    // A IA escolhida em Configurações (ou no .env), lida a cada nota.
+    const ai = await resolveAi(db);
+    if (!options.read && ai.provider === "openai" && !ai.apiKey) {
+      throw new ReadError("Sem chave da OpenAI: cadastre em Configurações.");
+    }
+    const client = aiClient(ai.provider, ai.apiKey);
+    const read = await (
+      options.read ??
+      ((img) => readReceipt(img, { client, model: ai.readerModel }))
+    )(image);
 
     // Camada 2: a chave de acesso é única por nota fiscal.
     const key = read.receipt.access_key;
@@ -88,7 +99,11 @@ export async function processReceipt(
 
     const result = await completeReading(
       { image, read },
-      { memory: options.memory ?? createDbMemory(db) },
+      {
+        memory: options.memory ?? createDbMemory(db),
+        client,
+        model: ai.interpreterModel,
+      },
     );
     await fillDraft(db, id, draftFromPipeline(result));
 
@@ -97,12 +112,16 @@ export async function processReceipt(
     if (probable) await markDuplicate(db, id, probable.id, probable.reason);
   } catch (error) {
     if (!(error instanceof ReadError)) console.error(error);
+    // 401 nos dois SDKs: chave errada, revogada ou sem crédito na conta.
+    const status = (error as { status?: unknown } | null)?.status;
     await markFailed(
       db,
       id,
       error instanceof ReadError
         ? error.message
-        : "Não foi possível ler a nota agora. Tente de novo.",
+        : status === 401
+          ? "A API recusou a chave: confira em Configurações."
+          : "Não foi possível ler a nota agora. Tente de novo.",
     ).catch((e) => console.error(e));
   }
 }

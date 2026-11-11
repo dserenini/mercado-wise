@@ -1,0 +1,50 @@
+<%- include("partials/top", { title: "Configurações" }) %>
+<h1>Configurações</h1>
+<% if (saved) { %><p class="flash" role="status">Configurações salvas. Valem para a próxima nota enviada.</p><% } %>
+
+<form method="post" action="/settings" class="settings">
+  <fieldset>
+    <legend><strong>IA que lê e interpreta as notas</strong></legend>
+    <% for (const p of PROVIDERS) { %>
+      <label>
+        <input type="radio" name="provider" value="<%= p %>" <%= settings.provider === p ? "checked" : "" %>>
+        <%= PROVIDER_LABEL[p] %>
+      </label>
+    <% } %>
+  </fieldset>
+
+  <% for (const p of PROVIDERS) { const s = settings.providers[p]; %>
+    <article>
+      <h2><%= PROVIDER_LABEL[p] %></h2>
+
+      <label for="<%= p %>_key">Chave da API</label>
+      <input id="<%= p %>_key" name="<%= p %>_key" type="password" autocomplete="off"
+        placeholder="<%= s.keyHint ? "Deixe vazio para manter a atual" : "Cole a chave aqui" %>"
+        aria-describedby="<%= p %>_key_help">
+      <small id="<%= p %>_key_help">
+        <% if (s.keySource === "saved") { %>Chave salva aqui (termina em <%= s.keyHint %>).
+        <% } else if (s.keySource === "env") { %>Usando a chave do .env (termina em <%= s.keyHint %>). Uma chave salva aqui passa a valer no lugar dela.
+        <% } else { %>Nenhuma chave cadastrada.<% } %>
+      </small>
+      <% if (s.keySource === "saved") { %>
+        <label>
+          <input type="checkbox" name="<%= p %>_clear_key" value="1">
+          Apagar a chave salva
+        </label>
+      <% } %>
+
+      <div class="grid">
+        <label>Modelo da leitura (foto)
+          <input name="<%= p %>_reader_model" value="<%= s.readerModel %>" autocomplete="off" spellcheck="false">
+        </label>
+        <label>Modelo da interpretação (texto)
+          <input name="<%= p %>_interpreter_model" value="<%= s.interpreterModel %>" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <small class="muted">Deixe um modelo vazio para voltar ao padrão.</small>
+    </article>
+  <% } %>
+
+  <button type="submit">Salvar</button>
+</form>
+<%- include("partials/bottom") %>
