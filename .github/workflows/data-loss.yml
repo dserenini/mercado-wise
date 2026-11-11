@@ -51,7 +51,11 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if tail -n 1 answer.md | grep -qx 'VEREDITO: SEGURO'; then title="✅ Sem risco de perda de dados"; else title="⚠️ Possível risco de perda de dados"; fi
-          { echo "### $title"; echo; cat answer.md; echo; echo "<sub>Claude Haiku 5.5 lendo o diff até \`${HEAD_SHA::7}\`. Pode errar: na dúvida, leia o diff.</sub>"; } > comment.md
+          # Preço do Haiku 5.5 por milhão de tokens: $0,10 entrada / $0,50 saída (5x acima de 100 mil de entrada).
+          usage=$(jq -r '.usage | "\(.input_tokens) \(.output_tokens)"' res.json)
+          cost=$(echo "$usage" | awk '{m = $1 > 100000 ? 5 : 1; printf "%.4f", ($1 * 0.10 + $2 * 0.50) * m / 1e6}')
+          read -r tin tout <<< "$usage"
+          { echo "### $title"; echo; cat answer.md; echo; echo "<sub>Claude Haiku 5.5 lendo o diff até \`${HEAD_SHA::7}\` · $tin tokens de entrada, $tout de saída · ~\$$cost. Pode errar: na dúvida, leia o diff.</sub>"; } > comment.md
           gh pr comment ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" \
             --body-file comment.md
       - name: Veredito
