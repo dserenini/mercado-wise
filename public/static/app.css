@@ -778,3 +778,16 @@ details.item .fields .suggested {
   width: 100%;
   border-radius: var(--pico-border-radius);
 }
+
+.items-toggle {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+.items-toggle button {
+  width: auto;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.85rem;
+  margin: 0;
+}
