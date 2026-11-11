@@ -1,5 +1,5 @@
 import { Anthropic } from "@anthropic-ai/sdk";
-import OpenAI from "openai";
+import { OpenAI } from "openai";
 import { config } from "../config.js";
 import type { Provider } from "./ai-settings.js";
 import { openaiAsClaude } from "./openai.js";

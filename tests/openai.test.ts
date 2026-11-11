@@ -1,4 +1,4 @@
-import type OpenAI from "openai";
+import type { OpenAI } from "openai";
 import { describe, expect, it, vi } from "vitest";
 import type { PreparedImage } from "../src/services/image.js";
 import { openaiAsClaude } from "../src/services/openai.js";
