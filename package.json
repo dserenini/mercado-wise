@@ -25,6 +25,7 @@
     "seed-memory": "tsx scripts/seed-memory.ts",
     "setup-login": "tsx scripts/setup-login.ts",
     "add-user": "tsx scripts/add-user.ts",
+    "enrich-stores": "tsx scripts/enrich-stores.ts",
     "report": "tsx scripts/report.ts",
     "backfill-hashes": "tsx scripts/backfill-hashes.ts"
   },

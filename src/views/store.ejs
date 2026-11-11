@@ -1,0 +1,85 @@
+<%- include("partials/top", { title: store.name }) %>
+<%
+  const s = store;
+  const date = (d) => (d ? d.split("-").reverse().join("/") : "—");
+  const cnpj = s.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  const v = (field) => (form[field] === null || form[field] === undefined ? "" : form[field]);
+  const STATUS = { draft: "rascunho", confirmed: "confirmada", duplicate: "repetida?", processing: "lendo…", failed: "falhou" };
+  const hasCoords = s.latitude !== null && s.longitude !== null;
+%>
+<a href="/stores" class="back-link">← Mercados</a>
+
+<hgroup>
+  <h1><%= s.name %></h1>
+  <p>CNPJ <%= cnpj %><% if (s.legal_name) { %> · <%= s.legal_name %><% } %></p>
+</hgroup>
+
+<% if (flash) { %><p class="flash" role="status"><%= flash %></p><% } %>
+<% if (errors.length > 0) { %>
+  <div class="error-box" role="alert">
+    <strong>Não deu para salvar:</strong>
+    <ul><% for (const e of errors) { %><li><%= e %></li><% } %></ul>
+  </div>
+<% } %>
+
+<%# Números: calculados a partir das notas, não editáveis. %>
+<section class="store-stats" aria-label="Números deste mercado">
+  <div><strong><%= s.receipts %></strong><small><%= s.receipts === 1 ? "nota" : "notas" %></small></div>
+  <div><strong><%= s.users %></strong><small><%= s.users === 1 ? "usuário" : "usuários" %></small></div>
+  <div><strong><%= formatCents(s.total_cents) %></strong><small>total</small></div>
+  <div><strong><%= date(s.first_purchase) %></strong><small>primeira compra</small></div>
+  <div><strong><%= date(s.last_purchase) %></strong><small>última compra</small></div>
+</section>
+
+<form method="post" action="/stores/<%= s.cnpj %>">
+  <article>
+    <label>Nome
+      <input name="name" value="<%= v("name") %>" required maxlength="150">
+    </label>
+    <label>Razão social
+      <input name="legal_name" value="<%= v("legal_name") %>" maxlength="200">
+    </label>
+    <label>Endereço
+      <input name="address" value="<%= v("address") %>" maxlength="300">
+    </label>
+    <div class="grid">
+      <label>Bairro <input name="district" value="<%= v("district") %>" maxlength="100"></label>
+      <label>CEP <input name="postal_code" value="<%= v("postal_code") %>" inputmode="numeric" maxlength="12"></label>
+    </div>
+    <div class="grid">
+      <label>Cidade <input name="city" value="<%= v("city") %>" maxlength="100"></label>
+      <label>Estado <input name="state" value="<%= v("state") %>" maxlength="40"></label>
+      <label>País <input name="country" value="<%= v("country") %>" maxlength="60"></label>
+    </div>
+    <div class="grid">
+      <label>Latitude <input name="latitude" value="<%= v("latitude") %>" inputmode="decimal"></label>
+      <label>Longitude <input name="longitude" value="<%= v("longitude") %>" inputmode="decimal"></label>
+    </div>
+    <% if (hasCoords) { %>
+      <p><a href="https://www.openstreetmap.org/?mlat=<%= s.latitude %>&mlon=<%= s.longitude %>#map=18/<%= s.latitude %>/<%= s.longitude %>" target="_blank" rel="noopener">Ver no mapa ↗</a></p>
+    <% } %>
+    <button type="submit">Salvar</button>
+  </article>
+</form>
+
+<% if (canEnrich) { %>
+  <form method="post" action="/stores/<%= s.cnpj %>/enrich">
+    <button type="submit" class="secondary outline">Completar campos vazios pelo CNPJ e endereço</button>
+    <small class="muted">Consulta a BrasilAPI (cadastro da Receita) e o OpenStreetMap. Só preenche o que está vazio.
+      <% if (s.enriched_at) { %>Última consulta: <%= s.enriched_at.toLocaleDateString("pt-BR") %>.<% } %></small>
+  </form>
+<% } %>
+
+<h2>Notas deste mercado</h2>
+<% if (receipts.length === 0) { %><p class="muted">Nenhuma.</p><% } %>
+<ul class="store-receipts">
+  <% for (const r of receipts) { %>
+    <li>
+      <a href="/receipts/<%= r.id %>">Nota #<%= r.id %></a>
+      · <%= date(r.purchase_date) %>
+      · <%= r.total_cents === null ? "—" : formatCents(r.total_cents) %>
+      · <span class="muted"><%= STATUS[r.status] || r.status %>, de <%= r.owner %></span>
+    </li>
+  <% } %>
+</ul>
+<%- include("partials/bottom") %>

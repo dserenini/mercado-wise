@@ -7,9 +7,11 @@ import { centsToInput, decimalToInput, formatCents } from "./lib/money.js";
 import { authRoutes, requireLogin } from "./routes/auth.js";
 import { receiptRoutes } from "./routes/receipts.js";
 import { settingsRoutes } from "./routes/settings.js";
+import { storeRoutes } from "./routes/stores.js";
 import { suggestRoutes } from "./routes/suggest.js";
 import { CATEGORIES } from "./schemas/interpretation.js";
 import type { AcceptResult } from "./services/ingest.js";
+import type { StoreLookup } from "./services/stores.js";
 
 export interface AppDeps {
   db: Db;
@@ -19,6 +21,8 @@ export interface AppDeps {
   process: (id: number) => Promise<void>;
   /** mantém a tarefa rodando depois da resposta (na Vercel, waitUntil) */
   background: (task: Promise<unknown>) => void;
+  /** dados do mercado pelo CNPJ e endereço (botão "completar"); ausente = sem botão */
+  storeLookup?: StoreLookup;
   /** senha única de antes: vale para usuário sem senha própria (o danilo) */
   passwordHash: string;
   sessionSecret: string;
@@ -85,6 +89,7 @@ export function createApp(deps: AppDeps) {
   app.use(receiptRoutes(deps));
   app.use(suggestRoutes(deps));
   app.use(settingsRoutes(deps));
+  app.use(storeRoutes(deps));
 
   app.use((_req, res) => {
     res.status(404).render("message", {

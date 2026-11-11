@@ -27,6 +27,7 @@ import type { InterpretationMemory } from "./interpreter.js";
 import type { OffFetch } from "./off.js";
 import { completeReading } from "./pipeline.js";
 import { ReadError, type ReadResult, readReceipt } from "./reader.js";
+import { enrichReceiptStore, type StoreLookup } from "./stores.js";
 import { isManufacturerEan } from "./validators.js";
 
 // Envio de nota em duas etapas:
@@ -77,6 +78,8 @@ export interface ProcessOptions {
   maxWaitMs?: number;
   /** consulta de EAN (Open Food Facts) depois da leitura; ausente = não consulta */
   lookup?: OffFetch;
+  /** dados do mercado (CNPJ e coordenadas) depois da leitura; ausente = não consulta */
+  storeLookup?: StoreLookup;
 }
 
 export async function processReceipt(
@@ -124,6 +127,8 @@ export async function processReceipt(
 
     // A nota já está pronta para revisar; a marca pelo código de barras chega depois.
     if (options.lookup) await lookupDraftEans(db, id, options.lookup);
+    if (options.storeLookup)
+      await enrichReceiptStore(db, id, options.storeLookup);
   } catch (error) {
     if (!(error instanceof ReadError)) console.error(error);
     // 401 nos dois SDKs: chave errada, revogada ou sem crédito na conta.

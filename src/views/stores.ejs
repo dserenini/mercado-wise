@@ -1,0 +1,30 @@
+<%- include("partials/top", { title: "Mercados" }) %>
+<%
+  const date = (d) => (d ? d.split("-").reverse().join("/") : "—");
+  // Bairro primeiro: lojas da mesma rede costumam ter o mesmo nome.
+  const place = (s) => [s.district, [s.city, s.state].filter(Boolean).join(" - ")]
+    .filter(Boolean).join(" · ");
+%>
+<h1>Mercados</h1>
+<p class="muted">Cada loja aparece aqui sozinha quando chega a primeira nota dela (pelo CNPJ).
+  Os números contam notas em rascunho e confirmadas, de todos os usuários.</p>
+
+<% if (stores.length === 0) { %>
+  <p>Nenhum mercado ainda. Eles aparecem quando você <a href="/receipts/new">envia uma nota</a>.</p>
+<% } %>
+<% for (const s of stores) { %>
+  <a href="/stores/<%= s.cnpj %>" class="receipt-row">
+    <article>
+      <div class="row-head">
+        <strong><%= s.name %></strong>
+        <span><%= formatCents(s.total_cents) %></span>
+      </div>
+      <div class="row-meta">
+        <span><%= place(s) || "cidade a completar" %></span>
+        <span><%= s.receipts %> <%= s.receipts === 1 ? "nota" : "notas" %> · <%= s.users %> <%= s.users === 1 ? "usuário" : "usuários" %></span>
+        <% if (s.last_purchase) { %><span>última em <%= date(s.last_purchase) %></span><% } %>
+      </div>
+    </article>
+  </a>
+<% } %>
+<%- include("partials/bottom") %>

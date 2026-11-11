@@ -569,3 +569,18 @@ details.item .fields .suggested {
 .owner-line {
   margin-bottom: 0.25rem;
 }
+
+/* Mercado: números calculados das notas */
+.store-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+.store-stats div {
+  display: flex;
+  flex-direction: column;
+}
+.store-stats small {
+  color: var(--pico-muted-color);
+}

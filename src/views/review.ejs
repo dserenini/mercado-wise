@@ -80,6 +80,7 @@
     </div>
     <small class="muted">
       CNPJ <%= r.store_cnpj || "—" %>
+      <% if (/^\d{14}$/.test(r.store_cnpj || "")) { %> · <a href="/stores/<%= r.store_cnpj %>">ver mercado</a><% } %>
       <% if (r.purchase_time) { %> · <%= r.purchase_time %><% } %>
       <% if (r.access_key) { %><br>Chave <%= r.access_key.replace(/(\d{4})/g, "$1 ").trim() %><% } %>
     </small>
