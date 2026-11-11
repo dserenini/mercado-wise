@@ -533,6 +533,89 @@ export async function getReceiptImage(
     : null;
 }
 
+// Fotos de perto (app.receipt_photos, migration 011). Sem a tabela: nenhuma, e
+// adicionar avisa com MissingPhotosTable.
+
+/** Quantas fotos de perto uma nota aceita (cada uma ~5 mil tokens na leitura). */
+export const MAX_CLOSE_UPS = 8;
+
+const WAITING = "status = 'processing' and read_started_at is null";
+
+/** Nota criada com wait=1 que ainda não começou a ser lida. */
+export async function isWaitingForRead(db: Db, id: number): Promise<boolean> {
+  const rows = await db.query(
+    `select 1 from app.receipts where id = $1 and ${WAITING}`,
+    [id],
+  );
+  return rows.length > 0;
+}
+
+export async function addCloseUp(
+  db: Db,
+  receiptId: number,
+  image: PreparedImage,
+): Promise<"added" | "full" | "not-found"> {
+  const rows = await db.query<{ position: number }>(
+    `insert into app.receipt_photos (receipt_id, position, media_type, width, height, data)
+     select r.id, coalesce(max(p.position), 0) + 1, $2, $3, $4, $5
+       from app.receipts r left join app.receipt_photos p on p.receipt_id = r.id
+      where r.id = $1 and r.status = 'processing' and r.read_started_at is null
+      group by r.id
+     having count(p.position) < $6
+     returning position`,
+    [
+      receiptId,
+      image.mediaType,
+      image.width,
+      image.height,
+      image.data,
+      MAX_CLOSE_UPS,
+    ],
+  );
+  if (rows.length > 0) return "added";
+  return (await isWaitingForRead(db, receiptId)) ? "full" : "not-found";
+}
+
+/** Quantas fotos de perto a nota tem. Banco sem a migration 011: 0. */
+export async function closeUpCount(db: Db, receiptId: number): Promise<number> {
+  try {
+    const [row] = await db.query<{ n: number }>(
+      "select count(*)::int as n from app.receipt_photos where receipt_id = $1",
+      [receiptId],
+    );
+    return row?.n ?? 0;
+  } catch (error) {
+    if ((error as { code?: unknown } | null)?.code === "42P01") return 0;
+    throw error;
+  }
+}
+
+/** Fotos de perto, em ordem. Banco sem a migration 011: nenhuma. */
+export async function getCloseUps(
+  db: Db,
+  receiptId: number,
+): Promise<PreparedImage[]> {
+  try {
+    const rows = await db.query<{
+      data: Uint8Array;
+      width: number;
+      height: number;
+    }>(
+      "select data, width, height from app.receipt_photos where receipt_id = $1 order by position",
+      [receiptId],
+    );
+    return rows.map((r) => ({
+      mediaType: "image/jpeg",
+      data: Buffer.from(r.data),
+      width: r.width,
+      height: r.height,
+    }));
+  } catch (error) {
+    if ((error as { code?: unknown } | null)?.code === "42P01") return [];
+    throw error;
+  }
+}
+
 export async function deleteReceipt(db: Db, id: number): Promise<boolean> {
   const rows = await db.query(
     "delete from app.receipts where id = $1 returning id",

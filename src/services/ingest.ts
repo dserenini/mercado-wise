@@ -8,6 +8,7 @@ import {
   draftFromPipeline,
   fillDraft,
   findReceiptByAccessKey,
+  getCloseUps,
   getReceipt,
   getReceiptImage,
   markDuplicate,
@@ -67,7 +68,10 @@ export async function acceptPhoto(
 
 export interface ProcessOptions {
   /** nos testes, uma leitura falsa; padrão: a IA */
-  read?: (image: PreparedImage) => Promise<ReadResult>;
+  read?: (
+    image: PreparedImage,
+    closeUps: PreparedImage[],
+  ) => Promise<ReadResult>;
   memory?: InterpretationMemory;
   /** espera pela vez de ler (padrão: 5 s entre tentativas, até 3 min: somada à
    *  leitura, cabe nos 5 min que a Vercel dá para cada envio) */
@@ -95,10 +99,12 @@ export async function processReceipt(
       throw new ReadError("Sem chave da OpenAI: cadastre em Configurações.");
     }
     const client = aiClient(ai.provider, ai.apiKey);
+    const closeUps = await getCloseUps(db, id);
     const read = await (
       options.read ??
-      ((img) => readReceipt(img, { client, model: ai.readerModel }))
-    )(image);
+      ((img, more) =>
+        readReceipt(img, { client, model: ai.readerModel, closeUps: more }))
+    )(image, closeUps);
 
     // Camada 2: a chave de acesso é única por nota fiscal.
     const key = read.receipt.access_key;

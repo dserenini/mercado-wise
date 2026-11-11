@@ -50,12 +50,7 @@
 <% } %>
 
 <% if (r.has_image) { %>
-  <details class="photo">
-    <summary>Ver foto da nota</summary>
-    <a href="/receipts/<%= r.id %>/image" target="_blank" rel="noopener">
-      <img src="/receipts/<%= r.id %>/image" alt="Foto da nota" loading="lazy">
-    </a>
-  </details>
+  <%- include("partials/photos", { r, closeUps, summary: "Ver foto da nota" }) %>
 <% } %>
 
 <form method="post" action="/receipts/<%= r.id %>/confirm" id="review-form" data-cnpj="<%= r.store_cnpj || "" %>">

@@ -1,0 +1,12 @@
+<%# Foto da nota e, se houver, as fotos de perto. %>
+<details class="photo">
+  <summary><%= closeUps > 0 ? `Ver fotos da nota (${closeUps + 1})` : summary %></summary>
+  <a href="/receipts/<%= r.id %>/image" target="_blank" rel="noopener">
+    <img src="/receipts/<%= r.id %>/image" alt="Foto da nota" loading="lazy">
+  </a>
+  <% for (let n = 1; n <= closeUps; n++) { %>
+    <a href="/receipts/<%= r.id %>/photos/<%= n %>" target="_blank" rel="noopener">
+      <img src="/receipts/<%= r.id %>/photos/<%= n %>" alt="Foto de perto <%= n %>" loading="lazy">
+    </a>
+  <% } %>
+</details>
