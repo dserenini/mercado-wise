@@ -42,9 +42,44 @@
         </label>
       </div>
       <small class="muted">Deixe um modelo vazio para voltar ao padrão.</small>
+      <p class="test-row">
+        <button type="button" class="secondary outline" data-test="<%= p %>">Testar chave e modelos</button>
+        <span role="status" aria-live="polite" data-test-result="<%= p %>"></span>
+      </p>
     </article>
   <% } %>
 
   <button type="submit">Salvar</button>
 </form>
+<script>
+  // Testar: manda a chave digitada (ou nenhuma, para usar a atual) e os modelos do
+  // formulário; não salva.
+  for (const button of document.querySelectorAll("[data-test]")) {
+    button.addEventListener("click", async () => {
+      const p = button.dataset.test;
+      const out = document.querySelector(`[data-test-result="${p}"]`);
+      const form = button.form;
+      const body = new URLSearchParams({
+        provider: p,
+        key: form.elements[`${p}_key`].value,
+        reader_model: form.elements[`${p}_reader_model`].value,
+        interpreter_model: form.elements[`${p}_interpreter_model`].value,
+      });
+      button.setAttribute("aria-busy", "true");
+      out.textContent = "Testando…";
+      out.className = "";
+      try {
+        const res = await fetch("/settings/test", { method: "POST", body });
+        const r = await res.json();
+        out.textContent = r.message;
+        out.className = r.ok ? "test-ok" : "test-bad";
+      } catch {
+        out.textContent = "Sem resposta do servidor.";
+        out.className = "test-bad";
+      } finally {
+        button.removeAttribute("aria-busy");
+      }
+    });
+  }
+</script>
 <%- include("partials/bottom") %>
