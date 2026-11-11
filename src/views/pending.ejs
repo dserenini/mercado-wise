@@ -4,6 +4,7 @@
 <a href="<%= back %>" class="back-link">← Notas</a>
 
 <article class="narrow">
+  <p class="owner-line"><%- include("partials/owner", { receipt: r }) %></p>
   <% if (r.status === "processing") { %>
     <h2>Lendo a nota #<%= r.id %>…</h2>
     <p>Leva cerca de 30 segundos. Pode fechar esta tela: a leitura continua e a nota

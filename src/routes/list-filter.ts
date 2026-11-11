@@ -4,6 +4,7 @@ import type {
   ReceiptStatus,
   ReceiptSummary,
 } from "../db/receipts-repo.js";
+import { USERNAME } from "../db/users-repo.js";
 import { parseDecimal, toCents } from "../lib/money.js";
 
 // Filtros da lista de notas, vindos da URL (?status=…&de=…&data_de=…). Função pura:
@@ -15,6 +16,7 @@ import { parseDecimal, toCents } from "../lib/money.js";
 // do início do primeiro ao fim do segundo.
 // Ordem: data (novas/antigas/nenhuma) e valor (caras/baratas); com as duas, os meses
 // ficam agrupados e o valor ordena dentro de cada mês.
+// De quem: vazio = minhas (padrão), "todas" = de todo mundo, ou o nome de alguém.
 
 /** O que a tela mostra de volta nos campos (texto como digitado). */
 export interface ListFilterForm {
@@ -26,7 +28,12 @@ export interface ListFilterForm {
   data_ate: string;
   ordem_data: string;
   ordem_valor: string;
+  /** "" = minhas; "todas"; ou um nome de usuário */
+  quem: string;
 }
+
+/** De quem são as notas listadas; a rota troca o nome pelo id. */
+export type ListOwner = "mine" | "all" | { username: string };
 
 /** Valores padrão, omitidos da URL. */
 const DEFAULTS: Partial<Record<keyof ListFilterForm, string>> = {
@@ -69,9 +76,11 @@ export function dateBounds(text: string): [string, string] | null {
 }
 
 export function parseListFilter(query: Record<string, unknown>): {
+  /** userId fica null: a rota preenche a partir de `owner` e de quem está logado */
   filter: ListFilter;
   form: ListFilterForm;
   active: number;
+  owner: ListOwner;
 } {
   const text = (key: string) => {
     const value = query[key];
@@ -94,6 +103,13 @@ export function parseListFilter(query: Record<string, unknown>): {
   const ordemValor = Object.hasOwn(VALUE_ORDER, text("ordem_valor"))
     ? (text("ordem_valor") as keyof typeof VALUE_ORDER)
     : null;
+  const quem = text("quem").toLowerCase();
+  const owner: ListOwner =
+    quem === "todas"
+      ? "all"
+      : USERNAME.test(quem)
+        ? { username: quem }
+        : "mine";
   const order: ListOrder = {
     date: DATE_ORDER[ordemData],
     value: ordemValor && VALUE_ORDER[ordemValor],
@@ -106,6 +122,7 @@ export function parseListFilter(query: Record<string, unknown>): {
     fromDate: dataDe?.[0] ?? null,
     toDate: (dataAte ?? dataDe)?.[1] ?? null,
     order,
+    userId: null,
   };
   const form: ListFilterForm = {
     status: statuses,
@@ -115,13 +132,15 @@ export function parseListFilter(query: Record<string, unknown>): {
     data_ate: dataAte ? text("data_ate") : "",
     ordem_data: ordemData,
     ordem_valor: ordemValor ?? "",
+    quem: owner === "mine" ? "" : quem,
   };
   const active = [
     statuses.length > 0 ? statuses : null,
     de ?? ate,
     dataDe ?? dataAte,
+    owner === "mine" ? null : owner,
   ].filter((v) => v !== null).length;
-  return { filter, form, active };
+  return { filter, form, active, owner };
 }
 
 /** Os filtros de volta em query string, só os preenchidos (para voltar à lista). */

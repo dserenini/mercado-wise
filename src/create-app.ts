@@ -14,11 +14,12 @@ import type { AcceptResult } from "./services/ingest.js";
 export interface AppDeps {
   db: Db;
   /** foto → nota "lendo…" no banco, ou recusa por foto repetida */
-  accept: (photo: Buffer) => Promise<AcceptResult>;
+  accept: (photo: Buffer, userId: number) => Promise<AcceptResult>;
   /** lê a nota em segundo plano (nos testes, uma versão falsa que não chama a IA) */
   process: (id: number) => Promise<void>;
   /** mantém a tarefa rodando depois da resposta (na Vercel, waitUntil) */
   background: (task: Promise<unknown>) => void;
+  /** senha única de antes: vale para usuário sem senha própria (o danilo) */
   passwordHash: string;
   sessionSecret: string;
   /** atrás de HTTPS (produção): cookie só via HTTPS e IP real vindo do proxy */
@@ -79,7 +80,7 @@ export function createApp(deps: AppDeps) {
     }),
   );
 
-  app.use(authRoutes(deps.passwordHash));
+  app.use(authRoutes(deps.db, deps.passwordHash));
   app.use(requireLogin);
   app.use(receiptRoutes(deps));
   app.use(suggestRoutes(deps));

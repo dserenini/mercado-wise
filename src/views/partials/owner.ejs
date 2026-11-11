@@ -1,0 +1,6 @@
+<%# De quem é a nota: "Sua nota" ou "Nota de <nome>" (todo mundo pode abrir e editar). %>
+<% if (receipt.user_id === currentUser.id) { %>
+  <span class="badge owner mine">sua nota</span>
+<% } else { %>
+  <span class="badge owner">nota de <strong><%= receipt.owner %></strong></span>
+<% } %>

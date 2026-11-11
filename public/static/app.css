@@ -558,3 +558,14 @@ details.item .fields .suggested {
 .test-bad {
   color: var(--mw-bad);
 }
+
+/* Dono da nota: as dos outros em destaque, as minhas discretas */
+.badge.owner {
+  color: var(--pico-primary);
+}
+.badge.owner.mine {
+  color: var(--pico-muted-color);
+}
+.owner-line {
+  margin-bottom: 0.25rem;
+}

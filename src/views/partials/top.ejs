@@ -16,6 +16,9 @@
       <ul>
         <li><a href="/receipts/new" role="button">Enviar nota</a></li>
         <li><a href="/settings">Configurações</a></li>
+        <% if (typeof currentUser !== "undefined") { %>
+          <li class="muted" title="Entrou como <%= currentUser.username %>"><%= currentUser.username %></li>
+        <% } %>
         <li>
           <form method="post" action="/logout" class="inline">
             <button type="submit" class="secondary outline">Sair</button>

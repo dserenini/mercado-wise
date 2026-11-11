@@ -49,6 +49,7 @@ describe("parseListFilter", () => {
       fromDate: null,
       toDate: null,
       order: { date: "desc", value: null },
+      userId: null,
     });
     expect(active).toBe(0);
   });
@@ -78,8 +79,24 @@ describe("parseListFilter", () => {
       fromDate: "2025-01-01",
       toDate: "2026-03-31",
       order: { date: null, value: "desc" },
+      userId: null,
     });
     expect(active).toBe(3); // status, valor, data
+  });
+
+  it("de quem: minhas por padrão, 'todas', ou um nome; inválido = minhas", () => {
+    expect(parseListFilter({}).owner).toBe("mine");
+    const all = parseListFilter({ quem: "todas" });
+    expect(all.owner).toBe("all");
+    expect(all.active).toBe(1);
+    expect(filterQuery(all.form)).toBe("quem=todas");
+    expect(parseListFilter({ quem: "Danilo" }).owner).toEqual({
+      username: "danilo",
+    });
+    const bad = parseListFilter({ quem: "x'; drop" });
+    expect(bad.owner).toBe("mine");
+    expect(bad.form.quem).toBe("");
+    expect(filterQuery(bad.form)).toBe("");
   });
 
   it("ignora o que não faz sentido em vez de dar erro", () => {
