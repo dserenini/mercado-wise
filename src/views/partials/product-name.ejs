@@ -1,0 +1,2 @@
+<%# "Cerveja Albanos Pilsen 473 ml" a partir dos campos do produto. %>
+<%= [p.product, p.brand, p.variant].filter(Boolean).join(" ") %><% if (p.package_size) { %> <%= decimalToInput(p.package_size) %> <%= p.package_unit %><% } %>
