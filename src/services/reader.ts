@@ -67,10 +67,76 @@ export class ReadError extends Error {
   override name = "ReadError";
 }
 
+// Suba a versão quando mudar QR_PROMPT (vai para o banco junto com a leitura).
+export const READ_QR_PROMPT_VERSION = "read-v1+qr-v1";
+
+/**
+ * Leitura pela página oficial da NFC-e (aberta pelo QR Code), em vez da foto. As
+ * regras de READ_PROMPT valem; muda a fonte, que é texto oficial e não tem erro de
+ * leitura.
+ */
+export const QR_PROMPT = `${READ_PROMPT}
+
+IMPORTANTE: desta vez você NÃO recebe uma foto. Recebe o texto da página oficial de \
+consulta da NFC-e na Secretaria da Fazenda (SEFAZ), aberta pelo QR Code do cupom: a \
+pessoa abriu a página, selecionou tudo e colou. Pode vir junto texto de menu, rodapé \
+ou avisos do site: ignore o que não for da nota. Os valores são oficiais: copie-os \
+exatamente, sem nada ilegível. Diferenças em relação à foto:
+- A página costuma trazer "Código" do produto: é o código interno da loja. Coloque-o \
+em store_code. Só use ean se a página trouxer explicitamente um código de barras \
+(GTIN/EAN de 8, 12, 13 ou 14 dígitos).
+- quality: orientation "ok", flags vazio e illegible_lines vazio.
+- A chave de acesso, quando não aparecer junta, está no endereço ou em "Chave de \
+acesso"; devolva só os 44 dígitos.`;
+
+type ReadOptions = { client?: Anthropic; model?: string; effort?: Effort };
+
 /** Etapa LER: foto → o que está impresso, como ReceiptRead. Não interpreta, não valida. */
 export async function readReceipt(
   image: PreparedImage,
-  options: { client?: Anthropic; model?: string; effort?: Effort } = {},
+  options: ReadOptions = {},
+): Promise<ReadResult> {
+  return read(
+    READ_PROMPT,
+    READ_PROMPT_VERSION,
+    [
+      {
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: image.mediaType,
+          data: image.data.toString("base64"),
+        },
+      },
+      { type: "text", text: "Transcreva este cupom fiscal." },
+    ],
+    options,
+  );
+}
+
+/** Etapa LER pela página da SEFAZ (QR Code): texto copiado da página → ReceiptRead. */
+export async function readReceiptPage(
+  pageText: string,
+  options: ReadOptions = {},
+): Promise<ReadResult> {
+  return read(
+    QR_PROMPT,
+    READ_QR_PROMPT_VERSION,
+    [
+      {
+        type: "text",
+        text: `Texto copiado da página de consulta da NFC-e:\n\n${pageText}`,
+      },
+    ],
+    options,
+  );
+}
+
+async function read(
+  system: string,
+  promptVersion: string,
+  content: Anthropic.ContentBlockParam[],
+  options: ReadOptions,
 ): Promise<ReadResult> {
   const client = options.client ?? aiClient();
   const model = options.model ?? config.READER_MODEL;
@@ -80,24 +146,9 @@ export async function readReceipt(
   const response = await client.messages.parse({
     model,
     max_tokens: 16000,
-    system: READ_PROMPT,
+    system,
     output_config: { effort, format: zodOutputFormat(ReceiptReadSchema) },
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: image.mediaType,
-              data: image.data.toString("base64"),
-            },
-          },
-          { type: "text", text: "Transcreva este cupom fiscal." },
-        ],
-      },
-    ],
+    messages: [{ role: "user", content }],
   });
   const latencyMs = Math.round(performance.now() - started);
 
@@ -118,7 +169,7 @@ export async function readReceipt(
   return {
     receipt: tidyRead(response.parsed_output),
     model: response.model,
-    promptVersion: READ_PROMPT_VERSION,
+    promptVersion,
     usage: {
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,

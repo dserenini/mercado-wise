@@ -1,4 +1,5 @@
-// Tela de revisão: soma ao vivo (itens − descontos × total da nota), conta de cada
+// Tela de revisão: soma ao vivo (itens − descontos, inclusive o que a nota só traz no
+// total × total da nota), conta de cada
 // linha, incluir e remover itens, e sugestões da memória (autocompletar). O servidor
 // valida tudo de novo ao salvar.
 const form = document.getElementById("review-form");
@@ -24,10 +25,13 @@ const brl = (c) =>
 
 function recalc() {
   let sum = 0;
+  let itemDiscounts = 0;
   for (const item of items.querySelectorAll("[data-item]")) {
     const field = (attr) => item.querySelector(`[${attr}]`).value;
     const total = cents(field("data-line-total"));
-    sum += (total ?? 0) - (cents(field("data-discount")) ?? 0);
+    const discount = cents(field("data-discount")) ?? 0;
+    sum += (total ?? 0) - discount;
+    itemDiscounts += discount;
     // conta da linha: qtd × preço deve dar o total (menos de 1 centavo de folga)
     const qty = parse(field("data-qty"));
     const price = cents(field("data-price"));
@@ -40,6 +44,12 @@ function recalc() {
   }
   const printed = cents(form.querySelector("[data-total]").value);
   const bar = document.getElementById("totals");
+  // Desconto que a nota só traz no total (ex.: página da SEFAZ, que não detalha por
+  // item): o que passar dos descontos dos itens também sai da soma.
+  const extra = Math.max(0, Number(bar.dataset.discountTotal) - itemDiscounts);
+  sum -= extra;
+  bar.querySelector("[data-extra-wrap]").hidden = extra === 0;
+  bar.querySelector("[data-extra]").textContent = brl(-extra);
   bar.querySelector("[data-sum]").textContent = brl(sum);
   bar.querySelector("[data-printed]").textContent =
     printed === null ? "—" : brl(printed);

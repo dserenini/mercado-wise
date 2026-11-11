@@ -1,12 +1,55 @@
 <%- include("partials/top", { title: "Enviar notas" }) %>
 <h1>Enviar notas</h1>
 <% if (error) { %><p class="error-box"><%= error %></p><% } %>
+
+<%# Duas formas: QR Code (dados oficiais da SEFAZ, sem erro de leitura) ou foto. %>
+<p>Como você quer enviar a nota?</p>
+<div class="send-choice">
+  <button type="button" id="qr-start">▦ Ler o QR Code da nota</button>
+  <a href="#upload-form" role="button" class="secondary" id="photo-choice">📷 Tirar ou escolher foto</a>
+</div>
+<p class="muted"><small>Pelo QR Code os dados vêm da página oficial da SEFAZ, sem erro de leitura.
+  A foto serve para qualquer nota.</small></p>
+
+<p id="qr-fallback" class="error-box" role="alert" hidden></p>
+
+<section id="qr-panel" class="qr-panel" aria-labelledby="qr-title" hidden>
+  <h2 id="qr-title">QR Code da nota</h2>
+  <div id="qr-camera">
+    <%# Leitura ao vivo: o qr-scan.js procura o QR em cada quadro da câmera. %>
+    <video id="qr-video" playsinline muted aria-label="Câmera"></video>
+    <p id="qr-status" role="status" aria-live="polite">Abrindo a câmera…</p>
+    <button type="button" class="secondary outline" id="qr-cancel">Cancelar</button>
+  </div>
+  <div id="qr-paste" hidden>
+    <p role="status">✓ QR Code lido. Agora:</p>
+    <ol>
+      <li><a id="qr-open" href="#" target="_blank" rel="noopener" role="button">Abrir a página da SEFAZ ↗</a>
+        <small class="muted">Se a página pedir, confirme que não é um robô.</small></li>
+      <li>Na página, selecione tudo e copie. <small class="muted">No celular: toque e segure no
+        texto → Selecionar tudo → Copiar. No computador: Ctrl+A e Ctrl+C.</small></li>
+      <li>Volte aqui, cole e envie.</li>
+    </ol>
+    <label for="qr-text">Conteúdo da página da SEFAZ</label>
+    <textarea id="qr-text" rows="6" placeholder="Cole aqui o que você copiou da página"></textarea>
+    <div class="qr-actions">
+      <button type="button" class="secondary" id="qr-paste-button">Colar</button>
+      <button type="button" id="qr-send">Enviar nota</button>
+    </div>
+    <p id="qr-result" role="status" aria-live="polite"></p>
+    <button type="button" class="secondary outline" id="qr-photo">Prefiro mandar a foto</button>
+  </div>
+</section>
+
 <form id="upload-form" method="post" action="/receipts" enctype="multipart/form-data">
+  <h2>Foto da nota</h2>
   <p>Uma foto por nota, inteira, de cima e com boa luz. Dá para escolher várias de
     uma vez: cada uma vira um rascunho e é lida em segundo plano (cerca de 30 s cada).
     Pode fechar a tela depois de enviar.</p>
+  <%# Endereço do QR, se foi lido antes: a chave exata dele corrige a da foto. %>
+  <input type="hidden" name="qr_url" id="qr-url" value="">
   <%# Sem "capture": no celular, o próprio sistema oferece câmera ou galeria. %>
-  <label class="file-button" role="button">
+  <label class="file-button" role="button" id="photo-button">
     📷 Fotografar ou escolher fotos
     <input type="file" name="photo" accept="image/*" multiple>
   </label>
@@ -17,4 +60,5 @@
   </p>
 </form>
 <script src="/static/upload.js?v=<%= assetVersion %>" defer></script>
+<script type="module" src="/static/qr-scan.js?v=<%= assetVersion %>"></script>
 <%- include("partials/bottom") %>

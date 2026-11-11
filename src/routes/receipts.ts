@@ -1,4 +1,4 @@
-import { type Request, Router } from "express";
+import express, { type Request, Router } from "express";
 import multer from "multer";
 import type { AppDeps } from "../create-app.js";
 import {
@@ -34,6 +34,7 @@ const upload = multer({
 export function receiptRoutes({
   db,
   accept,
+  acceptPage,
   process,
   background,
 }: AppDeps): Router {
@@ -98,9 +99,12 @@ export function receiptRoutes({
     const results = [];
     for (const file of files) {
       try {
+        const qrUrl =
+          typeof req.body?.qr_url === "string" ? req.body.qr_url : undefined;
         const result = await accept(
           file.buffer,
           (res.locals.currentUser as CurrentUser).id,
+          qrUrl,
         );
         if (result.kind === "queued") background(process(result.id));
         results.push(result);
@@ -115,6 +119,23 @@ export function receiptRoutes({
     if (req.accepts(["html", "json"]) === "json") res.json({ results });
     else res.redirect(303, listUrl(req));
   });
+
+  // Nota pelo QR Code: o endereço lido pela câmera e o texto que a pessoa copiou da
+  // página da SEFAZ (o servidor não abre a página: os portais barram robôs). JSON.
+  router.post(
+    "/receipts/page",
+    express.json({ limit: "512kb" }),
+    async (req, res) => {
+      const text = (v: unknown) => (typeof v === "string" ? v : "");
+      const result = await acceptPage(
+        text(req.body?.qr_url),
+        text(req.body?.page_text),
+        (res.locals.currentUser as CurrentUser).id,
+      );
+      if (result.kind === "queued") background(process(result.id));
+      res.status(result.kind === "error" ? 400 : 200).json(result);
+    },
+  );
 
   router.get("/receipts/:id", async (req, res) => {
     await failStaleReads(db);
