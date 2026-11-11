@@ -1,0 +1,43 @@
+name: Perda de dados
+
+# Um modelo barato (Claude Haiku) lê só o diff do PR e responde uma pergunta:
+# isto pode fazer a gente perder dados? Falha quando o veredito é RISCO.
+# Alarme falso: leia o resumo do job, explique no PR por que não é risco e mergeie.
+on:
+  pull_request:
+
+jobs:
+  data-loss:
+    name: risco de perda de dados
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Diff do PR
+        run: |
+          git diff "origin/${{ github.base_ref }}...HEAD" > pr.diff
+          # ~100 mil tokens: acima disso o Haiku cobra 5x. Diff maior é cortado (e avisado).
+          if [ "$(wc -c < pr.diff)" -gt 350000 ]; then
+            head -c 350000 pr.diff > cut.diff && mv cut.diff pr.diff
+            printf '\n[DIFF CORTADO: maior que 350 KB; o resto não foi revisado]\n' >> pr.diff
+          fi
+      - name: Pergunta ao Claude
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          jq -n --rawfile prompt .github/scripts/data-loss-prompt.md --rawfile diff pr.diff '{
+            model: "claude-haiku-5-5",
+            max_tokens: 1500,
+            system: $prompt,
+            messages: [{role: "user", content: ("<diff>\n" + $diff + "\n</diff>")}]
+          }' > req.json
+          curl -sS --fail-with-body --retry 3 https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d @req.json > res.json || { cat res.json; exit 1; }
+          jq -r '[.content[] | select(.type == "text") | .text] | join("")' res.json > answer.md
+          { echo "## Risco de perda de dados"; echo; cat answer.md; } >> "$GITHUB_STEP_SUMMARY"
+          cat answer.md
+          tail -n 1 answer.md | grep -qx 'VEREDITO: SEGURO'

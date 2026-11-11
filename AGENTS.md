@@ -23,7 +23,9 @@ Se os dois mexerem na mesma coisa, tudo bem: quem chegar depois resolve o confli
    mergear no mesmo dia é o normal.
 4. **Espere todas as checagens do PR terminarem** (`gh pr checks --watch`).
    Hoje é o CI (`.github/workflows/ci.yml`); no futuro entram checagens de segurança.
-   Nenhuma pode estar vermelha nem pendente. Se o PR não tiver nenhuma checagem,
+   Nenhuma pode estar vermelha nem pendente. O check `risco de perda de dados`
+   (um modelo lendo o diff) pode dar alarme falso: leia o resumo do job; se não
+   for risco de verdade, explique no PR por quê e só então mergeie. Se o PR não tiver nenhuma checagem,
    confira que isso é esperado antes de mergear.
 5. Mergeie você mesmo (`gh pr merge --squash --delete-branch`).
    **Merge na `main` = deploy em produção** (Vercel).
