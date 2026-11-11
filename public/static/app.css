@@ -584,3 +584,63 @@ details.item .fields .suggested {
 .store-stats small {
   color: var(--pico-muted-color);
 }
+
+/* Mapa da página do mercado */
+.store-map {
+  height: 20rem;
+  border-radius: var(--pico-border-radius);
+  margin-block: 0.5rem 0.25rem;
+  overflow: hidden;
+}
+/* O marcador do MapLibre tem role="button", e o Pico pinta todo [role=button]
+   como botão (fundo, borda, padding): devolve ao normal só dentro do mapa. */
+.store-map .maplibregl-marker[role="button"] {
+  background: none;
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+/* Pino do mercado: gota na cor do app, ponta na coordenada */
+.store-pin {
+  width: 2.5rem;
+  height: 3rem;
+  display: flex;
+  justify-content: center;
+  cursor: grab;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.35));
+}
+.store-pin:active {
+  cursor: grabbing;
+}
+.store-pin-head {
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-top: 0.1rem;
+  display: grid;
+  place-items: center;
+  background: var(--pico-primary-background);
+  border: 3px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+}
+.store-pin-head svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  transform: rotate(45deg);
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.store-pin-head svg circle {
+  fill: #fff;
+  stroke: none;
+}
+.store-pin:focus-visible {
+  outline: none;
+}
+.store-pin:focus-visible .store-pin-head {
+  box-shadow: 0 0 0 3px var(--pico-primary-focus);
+}
