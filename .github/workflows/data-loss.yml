@@ -2,9 +2,14 @@ name: Perda de dados
 
 # Um modelo barato (Claude Haiku) lê só o diff do PR e responde uma pergunta:
 # isto pode fazer a gente perder dados? Falha quando o veredito é RISCO.
-# Alarme falso: leia o resumo do job, explique no PR por que não é risco e mergeie.
+# O resultado vira um comentário no PR (sempre o mesmo, editado a cada push).
+# Alarme falso: leia o comentário, explique no PR por que não é risco e mergeie.
 on:
   pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   data-loss:
@@ -40,4 +45,14 @@ jobs:
           jq -r '[.content[] | select(.type == "text") | .text] | join("")' res.json > answer.md
           { echo "## Risco de perda de dados"; echo; cat answer.md; } >> "$GITHUB_STEP_SUMMARY"
           cat answer.md
-          tail -n 1 answer.md | grep -qx 'VEREDITO: SEGURO'
+      - name: Comenta no PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if tail -n 1 answer.md | grep -qx 'VEREDITO: SEGURO'; then title="✅ Sem risco de perda de dados"; else title="⚠️ Possível risco de perda de dados"; fi
+          { echo "### $title"; echo; cat answer.md; echo; echo "<sub>Claude Haiku 5.5 lendo o diff até \`${HEAD_SHA::7}\`. Pode errar: na dúvida, leia o diff.</sub>"; } > comment.md
+          gh pr comment ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" \
+            --body-file comment.md --edit-last --create-if-none
+      - name: Veredito
+        run: tail -n 1 answer.md | grep -qx 'VEREDITO: SEGURO'
