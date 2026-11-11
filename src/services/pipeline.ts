@@ -34,7 +34,7 @@ export async function readPhoto(photo: Buffer): Promise<PhotoRead> {
  */
 export async function completeReading(
   { image, read }: PhotoRead,
-  options: { memory?: InterpretationMemory } = {},
+  options: Parameters<typeof interpretItems>[2] = {},
 ): Promise<PipelineResult> {
   const { receipt, lines } = completeLines(read.receipt);
   const checked = validateReceipt(receipt);
