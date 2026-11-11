@@ -1,8 +1,12 @@
 name: CI
 
 # Confere cada pull request e cada push na main (só na main: num PR, o push da
-# branch já dispara o pull_request, e rodaria duas vezes). O deploy é da Vercel (integração com o GitHub),
-# não deste workflow. Os testes usam PGlite (Postgres em memória): sem segredos aqui.
+# branch já dispara o pull_request, e rodaria duas vezes). O deploy é da Vercel
+# (integração com o GitHub), não deste workflow. Os testes usam PGlite (Postgres
+# em memória): sem segredos aqui.
+#
+# Para ser rápido: lint+typecheck e os testes (divididos em 3) rodam em paralelo,
+# e o node_modules fica em cache enquanto o package-lock.json não mudar.
 on:
   push:
     branches: [main]
@@ -11,13 +15,23 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: [lint, 1/3, 2/3, 3/3]
+    name: ${{ matrix.shard == 'lint' && 'lint + typecheck' || format('test {0}', matrix.shard) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm test
+      - id: deps
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node_modules-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
+      - if: steps.deps.outputs.cache-hit != 'true'
+        run: npm ci
+      - if: matrix.shard == 'lint'
+        run: npm run lint && npm run typecheck
+      - if: matrix.shard != 'lint'
+        run: npx vitest run --shard=${{ matrix.shard }}
