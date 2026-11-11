@@ -42,6 +42,8 @@ function app() {
       acceptedBy.push(userId);
       return { kind: "queued", id: 1 };
     },
+    acceptPage: async () => ({ kind: "error" as const, message: "" }),
+
     process: async () => {},
     background: () => {},
     passwordHash: legacyHash,

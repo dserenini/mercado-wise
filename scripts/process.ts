@@ -15,7 +15,7 @@ const result = await processReceiptPhoto(await readFile(path));
 const { image, ...rest } = result;
 console.log(
   JSON.stringify(
-    { image: { width: image.width, height: image.height }, ...rest },
+    { image: image && { width: image.width, height: image.height }, ...rest },
     null,
     2,
   ),

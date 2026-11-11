@@ -10,7 +10,8 @@ import { type ReadResult, readReceipt } from "./reader.js";
 import { type ReceiptValidation, validateReceipt } from "./validators.js";
 
 export interface PhotoRead {
-  image: PreparedImage;
+  /** null: nota lida pela página da SEFAZ (QR Code), sem foto */
+  image: PreparedImage | null;
   read: ReadResult;
 }
 

@@ -13,7 +13,8 @@
 
 <hgroup>
   <h1><%= r.store_name || "Mercado não identificado" %></h1>
-  <p class="owner-line"><%- include("partials/owner", { receipt: r }) %></p>
+  <p class="owner-line"><%- include("partials/owner", { receipt: r }) %>
+    <% if (r.source === "qrcode") { %><small class="muted">· lida pela página oficial da SEFAZ (QR Code)</small><% } %></p>
   <p>
     <% if (r.status !== "confirmed") { %>
       Revise e confirme. <%- include("partials/light", { light: r.traffic_light }) %>
@@ -101,7 +102,10 @@
 
   <button type="button" class="secondary outline" id="add-item">+ Adicionar item</button>
 
-  <div class="totals-bar" id="totals" aria-live="polite">
+  <%# Desconto que a nota traz só no total (a página da SEFAZ não detalha por item):
+      entra na soma, além dos descontos dos itens. %>
+  <div class="totals-bar" id="totals" aria-live="polite" data-discount-total="<%= r.discount_total_cents || 0 %>">
+    <span data-extra-wrap hidden>Desconto no total <strong data-extra>—</strong></span>
     <span>Soma <strong data-sum>—</strong></span>
     <span>Nota <strong data-printed>—</strong></span>
     <span data-diff-wrap>Diferença <strong data-diff>—</strong></span>

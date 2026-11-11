@@ -11,13 +11,24 @@ import { settingsRoutes } from "./routes/settings.js";
 import { storeRoutes } from "./routes/stores.js";
 import { suggestRoutes } from "./routes/suggest.js";
 import { CATEGORIES } from "./schemas/interpretation.js";
-import type { AcceptResult } from "./services/ingest.js";
+import type { AcceptResult, PageAcceptResult } from "./services/ingest.js";
 import type { StoreLookup } from "./services/stores.js";
 
 export interface AppDeps {
   db: Db;
   /** foto → nota "lendo…" no banco, ou recusa por foto repetida */
-  accept: (photo: Buffer, userId: number) => Promise<AcceptResult>;
+  /** qrUrl: endereço do QR Code da nota, se foi lido antes da foto */
+  accept: (
+    photo: Buffer,
+    userId: number,
+    qrUrl?: string,
+  ) => Promise<AcceptResult>;
+  /** nota pelo QR Code: endereço lido + texto copiado da página da SEFAZ */
+  acceptPage: (
+    qrUrl: string,
+    pageText: string,
+    userId: number,
+  ) => Promise<PageAcceptResult>;
   /** lê a nota em segundo plano (nos testes, uma versão falsa que não chama a IA) */
   process: (id: number) => Promise<void>;
   /** mantém a tarefa rodando depois da resposta (na Vercel, waitUntil) */
