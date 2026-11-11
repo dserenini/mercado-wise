@@ -1,0 +1,14 @@
+# Postgres local para desenvolvimento (no lugar do Supabase). Ver "Rodar local" no README.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mercado
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
