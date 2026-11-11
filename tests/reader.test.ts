@@ -2,6 +2,7 @@ import type { Anthropic } from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import type { PreparedImage } from "../src/services/image.js";
 import {
+  READ_CLOSE_UPS_PROMPT_VERSION,
   READ_PROMPT_VERSION,
   ReadError,
   readReceipt,
@@ -102,6 +103,19 @@ describe("readReceipt", () => {
     expect(JSON.stringify(params?.messages)).toContain(
       image.data.toString("base64"),
     );
+  });
+
+  it("com fotos de perto: manda todas as imagens, a geral primeiro, e muda a versão", async () => {
+    const { parse, client } = fakeClient({});
+    const near = { ...image, data: Buffer.from("perto") };
+    const result = await readReceipt(image, { client, closeUps: [near, near] });
+    const params = parse.mock
+      .calls[0]?.[0] as unknown as Anthropic.MessageCreateParams;
+    const content = params.messages[0]
+      ?.content as Anthropic.ContentBlockParam[];
+    expect(content.filter((b) => b.type === "image")).toHaveLength(3);
+    expect(JSON.stringify(content[0])).toContain(image.data.toString("base64"));
+    expect(result.promptVersion).toBe(READ_CLOSE_UPS_PROMPT_VERSION);
   });
 
   it("falha com ReadError quando o modelo recusa", async () => {

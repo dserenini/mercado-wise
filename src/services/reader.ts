@@ -67,26 +67,58 @@ export class ReadError extends Error {
   override name = "ReadError";
 }
 
-type ReadOptions = { client?: Anthropic; model?: string; effort?: Effort };
+export const READ_CLOSE_UPS_PROMPT_VERSION = "read-v1+closeups-v1";
+
+const CLOSE_UPS_NOTE = `A primeira foto mostra a nota inteira, de longe. As \
+seguintes são fotos de perto da MESMA nota, em geral de cima para baixo, e uma pode \
+repetir parte da anterior. Use as fotos de perto para ler os caracteres (são mais \
+nítidas) e a foto inteira para a ordem e para não pular nada. Cada item da nota entra \
+UMA vez só: não duplique o item que aparece em duas fotos. Em quality, avalie o \
+conjunto (cropped só se alguma parte da nota não aparece em nenhuma foto).`;
+
+type ReadOptions = {
+  client?: Anthropic;
+  model?: string;
+  effort?: Effort;
+  /** fotos de perto da mesma nota, além da foto geral */
+  closeUps?: PreparedImage[];
+};
+
+const imageBlock = (image: PreparedImage): Anthropic.ContentBlockParam => ({
+  type: "image",
+  source: {
+    type: "base64",
+    media_type: image.mediaType,
+    data: image.data.toString("base64"),
+  },
+});
 
 /** Etapa LER: foto → o que está impresso, como ReceiptRead. Não interpreta, não valida. */
 export async function readReceipt(
   image: PreparedImage,
   options: ReadOptions = {},
 ): Promise<ReadResult> {
+  const closeUps = options.closeUps ?? [];
+  if (closeUps.length === 0)
+    return read(
+      READ_PROMPT,
+      READ_PROMPT_VERSION,
+      [
+        imageBlock(image),
+        { type: "text", text: "Transcreva este cupom fiscal." },
+      ],
+      options,
+    );
   return read(
     READ_PROMPT,
-    READ_PROMPT_VERSION,
+    READ_CLOSE_UPS_PROMPT_VERSION,
     [
+      imageBlock(image),
+      ...closeUps.map(imageBlock),
       {
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: image.mediaType,
-          data: image.data.toString("base64"),
-        },
+        type: "text",
+        text: `${CLOSE_UPS_NOTE}\n\nTranscreva este cupom fiscal (${1 + closeUps.length} fotos).`,
       },
-      { type: "text", text: "Transcreva este cupom fiscal." },
     ],
     options,
   );

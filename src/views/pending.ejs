@@ -32,10 +32,7 @@
   <% } %>
 
   <% if (r.has_image) { %>
-    <details class="photo">
-      <summary>Ver foto</summary>
-      <img src="/receipts/<%= r.id %>/image" alt="Foto da nota" loading="lazy">
-    </details>
+    <%- include("partials/photos", { r, closeUps, summary: "Ver foto" }) %>
   <% } %>
 </article>
 <%- include("partials/bottom") %>

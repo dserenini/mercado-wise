@@ -37,20 +37,23 @@ input.addEventListener("change", async () => {
   if (rejected === 0) setTimeout(() => location.assign("/"), 800);
 });
 
-async function send(file) {
+async function send(file, url = form.action, fields = {}) {
   try {
     // Se o navegador não conseguir decodificar a imagem, vai a original.
     const photo = await shrink(file).catch(() => file);
     const body = new FormData();
+    // Campos antes da foto: o servidor já os tem quando recebe o arquivo.
+    for (const [k, v] of Object.entries(fields)) body.append(k, v);
     body.append("photo", photo, "nota.jpg");
-    const res = await fetch(form.action, {
+    const res = await fetch(url, {
       method: "POST",
       body,
       headers: { Accept: "application/json" },
     });
-    if (!res.ok) return { kind: "error", message: `erro ${res.status}` };
-    const { results } = await res.json();
-    return results[0];
+    const json = await res.json().catch(() => null);
+    if (json?.results) return json.results[0];
+    if (json?.kind) return json;
+    return { kind: "error", message: `erro ${res.status}` };
   } catch (error) {
     return { kind: "error", message: `sem conexão (${error.message})` };
   }
@@ -92,3 +95,92 @@ async function shrink(file) {
     ),
   );
 }
+
+// Uma nota com várias fotos: a geral cria a nota (sem começar a ler), cada foto de
+// perto vai numa requisição, e no fim pede a leitura.
+const noteForm = document.getElementById("note-form");
+const mainInput = document.getElementById("main-photo");
+const closeInput = document.getElementById("close-ups");
+const closeButton = document.getElementById("close-up-button");
+const sendButton = document.getElementById("send-note");
+const noteStatus = document.getElementById("note-status");
+let main = null;
+const closeUps = [];
+
+function thumb(file, onRemove) {
+  const figure = document.createElement("figure");
+  const img = document.createElement("img");
+  img.src = URL.createObjectURL(file);
+  img.alt = "";
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "secondary outline";
+  remove.textContent = "×";
+  remove.setAttribute("aria-label", "Tirar esta foto");
+  remove.addEventListener("click", () => {
+    URL.revokeObjectURL(img.src);
+    figure.remove();
+    onRemove();
+  });
+  figure.append(img, remove);
+  return figure;
+}
+
+mainInput.addEventListener("change", () => {
+  const file = mainInput.files?.[0];
+  mainInput.value = "";
+  if (!file) return;
+  main = file;
+  document.getElementById("main-thumb").replaceChildren(
+    thumb(file, () => {
+      main = null;
+      sendButton.disabled = true;
+    }),
+  );
+  closeButton.hidden = false;
+  sendButton.disabled = false;
+});
+
+closeInput.addEventListener("change", () => {
+  for (const file of closeInput.files ?? []) {
+    if (closeUps.length >= 8) {
+      noteStatus.textContent = "Até 8 fotos de perto por nota.";
+      break;
+    }
+    closeUps.push(file);
+    document
+      .getElementById("close-up-thumbs")
+      .append(thumb(file, () => closeUps.splice(closeUps.indexOf(file), 1)));
+  }
+  closeInput.value = "";
+});
+
+noteForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!main) return;
+  noteForm.setAttribute("aria-busy", "true");
+  sendButton.disabled = true;
+  const wait = closeUps.length > 0 ? { wait: "1" } : {};
+  noteStatus.textContent = "Enviando a foto da nota…";
+  const result = await send(main, noteForm.action, wait);
+  if (result.kind !== "queued") {
+    noteStatus.replaceChildren(...describe("Foto da nota", result));
+    noteForm.removeAttribute("aria-busy");
+    sendButton.disabled = false;
+    return;
+  }
+  let failed = 0;
+  for (const [i, file] of closeUps.entries()) {
+    noteStatus.textContent = `Enviando foto de perto ${i + 1} de ${closeUps.length}…`;
+    const r = await send(file, `/receipts/${result.id}/photos`);
+    if (r.kind !== "added") failed += 1;
+  }
+  if (wait.wait)
+    await fetch(`/receipts/${result.id}/read`, { method: "POST" }).catch(
+      () => {},
+    );
+  noteStatus.textContent = failed
+    ? `Nota enviada, mas ${failed} foto(s) de perto não foram. Lendo…`
+    : "Nota enviada. Lendo…";
+  setTimeout(() => location.assign(`/receipts/${result.id}`), 800);
+});
