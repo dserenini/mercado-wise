@@ -194,15 +194,22 @@ export type ReceiptStatus =
   | "duplicate"
   | "confirmed";
 
-/** Nota nova só com a foto, esperando a leitura (status 'processing'). */
+/**
+ * Nota nova só com a foto, esperando a leitura (status 'processing'). Sem userId
+ * (scripts), fica com o dono padrão da coluna (o primeiro usuário).
+ */
 export async function createPending(
   db: Db,
   image: PreparedImage,
   hash: string,
+  userId?: number,
 ): Promise<number> {
   return db.transaction(async (tx) => {
     const [row] = await tx.query<{ id: number }>(
-      "insert into app.receipts (source, status) values ('photo', 'processing') returning id",
+      userId === undefined
+        ? "insert into app.receipts (source, status) values ('photo', 'processing') returning id"
+        : "insert into app.receipts (source, status, user_id) values ('photo', 'processing', $1) returning id",
+      userId === undefined ? [] : [userId],
     );
     if (!row) throw new Error("insert em receipts não devolveu id");
     await insertImage(tx, row.id, image, hash);
@@ -326,6 +333,9 @@ export interface ReceiptRow {
   error: string | null;
   duplicate_of: number | null;
   duplicate_reason: string | null;
+  user_id: number;
+  /** nome de quem enviou */
+  owner: string;
 }
 
 export interface ItemRow {
@@ -365,7 +375,8 @@ const RECEIPT_COLUMNS = `id, status, source, store_name, store_cnpj, store_addre
   access_key, purchase_date::text as purchase_date,
   to_char(purchase_time, 'HH24:MI') as purchase_time, items_count, gross_total_cents,
   discount_total_cents, total_cents, payment_method, traffic_light, created_at,
-  confirmed_at, error, duplicate_of, duplicate_reason,
+  confirmed_at, error, duplicate_of, duplicate_reason, user_id,
+  (select u.username from app.users u where u.id = app.receipts.user_id) as owner,
   exists (select 1 from app.receipt_images i where i.receipt_id = app.receipts.id)
     as has_image`;
 
@@ -400,6 +411,9 @@ export interface ReceiptSummary {
   created_at: Date;
   error: string | null;
   duplicate_of: number | null;
+  user_id: number;
+  /** nome de quem enviou */
+  owner: string;
 }
 
 /** Ordem da lista: por data, por valor ou os dois (meses agrupados, valor dentro). */
@@ -418,6 +432,8 @@ export interface ListFilter {
   fromDate: string | null;
   toDate: string | null;
   order: ListOrder;
+  /** só as notas deste usuário; null = de todos */
+  userId: number | null;
 }
 
 function orderBy({ date, value }: ListOrder): string {
@@ -438,9 +454,11 @@ export async function listReceipts(
   return db.query<ReceiptSummary>(
     `select r.id, r.status, r.store_name, r.purchase_date::text as purchase_date,
             r.total_cents, r.traffic_light, r.created_at, r.error, r.duplicate_of,
+            r.user_id, u.username as owner,
             (select count(*)::int from app.receipt_items i where i.receipt_id = r.id)
               as item_lines
        from app.receipts r
+       join app.users u on u.id = r.user_id
       ${where}
       order by ${orderBy(filter.order ?? { date: "desc", value: null })}`,
     params,
@@ -469,6 +487,7 @@ function listWhere(filter: Partial<ListFilter>) {
     params.push(value);
     conditions.push(sql.replace("?", `$${params.length}`));
   };
+  if (filter.userId != null) add("r.user_id = ?", filter.userId);
   if (filter.status?.length) add("r.status = any(?::text[])", filter.status);
   if (filter.minCents != null) add("r.total_cents >= ?", filter.minCents);
   if (filter.maxCents != null) add("r.total_cents <= ?", filter.maxCents);

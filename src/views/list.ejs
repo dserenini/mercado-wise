@@ -8,6 +8,14 @@
     : picked.length <= 2 ? picked.join(", ") : `${picked.length} selecionados`;
   // Topo da barra de valor: a maior nota, arredondada para cima em reais.
   const sliderMax = Math.max(1, Math.ceil(bounds.maxCents / 100));
+  // De quem é a lista: só minhas (padrão), de todos ou de alguém.
+  const me = currentUser;
+  const others = users.filter((u) => u.id !== me.id);
+  const whose = form.quem === "" ? "Minhas notas"
+    : form.quem === "todas" ? "Notas de todos"
+    : form.quem === me.username ? "Minhas notas" : `Notas de ${form.quem}`;
+  // Fora do "só minhas", cada nota diz de quem é.
+  const showOwner = form.quem !== "" && form.quem !== me.username;
 %>
 <h1>Notas</h1>
 
@@ -26,6 +34,15 @@
         data-today="<%= new Date().toISOString().slice(0, 10) %>"
         data-first-year="<%= bounds.firstYear || new Date().getFullYear() %>">
     <div class="filter-grid">
+      <label>De quem
+        <select name="quem">
+          <option value="">Minhas</option>
+          <option value="todas" <%= selected("quem", "todas") %>>De todos</option>
+          <% for (const u of others) { %>
+            <option value="<%= u.username %>" <%= selected("quem", u.username) %>>De <%= u.username %></option>
+          <% } %>
+        </select>
+      </label>
       <%# Status: vários de uma vez (dropdown do Pico com caixas de seleção). %>
       <div class="status-field">
         <span class="field-label">Status</span>
@@ -95,14 +112,15 @@
 <%# data-reading: o list.js atualiza a lista sozinho enquanto houver nota sendo lida. %>
 <div id="results" aria-live="polite" <%= receipts.some((r) => r.status === "processing") ? "data-reading" : "" %>>
   <p class="list-summary">
-    <%= receipts.length %> <%= receipts.length === 1 ? "nota" : "notas" %> · <strong><%= formatCents(totalCents) %></strong>
+    <strong><%= whose %></strong> · <%= receipts.length %> <%= receipts.length === 1 ? "nota" : "notas" %> · <strong><%= formatCents(totalCents) %></strong>
   </p>
 
   <% if (receipts.length === 0) { %>
     <% if (active > 0) { %>
       <p>Nenhuma nota com esses filtros. <a href="/?">Limpar filtros</a>.</p>
     <% } else { %>
-      <p>Nenhuma nota ainda. <a href="/receipts/new">Envie a primeira</a>.</p>
+      <p>Você ainda não enviou nenhuma nota. <a href="/receipts/new">Envie a primeira</a>
+        ou <a href="/?quem=todas">veja as notas de todos</a>.</p>
     <% } %>
   <% } %>
   <% for (const g of groups) { %>
@@ -123,6 +141,9 @@
               <span><%= r.error || "leitura falhou" %></span>
             <% } else { %>
               <span><%= r.purchase_date ? r.purchase_date.split("-").reverse().join("/") : "sem data" %> · <%= r.item_lines %> itens</span>
+            <% } %>
+            <% if (showOwner) { %>
+              <span class="badge owner <%= r.user_id === me.id ? "mine" : "" %>"><%= r.user_id === me.id ? "minha" : "de " + r.owner %></span>
             <% } %>
             <% if (r.status === "draft") { %>
               <span class="badge draft">revisar</span> <%- include("partials/light", { light: r.traffic_light }) %>

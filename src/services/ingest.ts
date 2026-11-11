@@ -49,9 +49,11 @@ export type AcceptResult =
   | { kind: "queued"; id: number }
   | { kind: "same-photo"; id: number; status: ReceiptStatus };
 
+/** Sem userId (scripts), a nota fica com o dono padrão (o primeiro usuário). */
 export async function acceptPhoto(
   db: Db,
   photo: Buffer,
+  userId?: number,
 ): Promise<AcceptResult> {
   const image = await prepareImage(photo);
   const hash = await imageHash(image.data);
@@ -59,7 +61,10 @@ export async function acceptPhoto(
     (p) => hashDistance(p.hash, hash) <= SAME_PHOTO_MAX_DISTANCE,
   );
   if (same) return { kind: "same-photo", id: same.id, status: same.status };
-  return { kind: "queued", id: await createPending(db, image, hash) };
+  return {
+    kind: "queued",
+    id: await createPending(db, image, hash, userId),
+  };
 }
 
 export interface ProcessOptions {

@@ -30,7 +30,10 @@ async function loggedIn() {
     sessionSecret: SECRET,
   });
   const agent = request.agent(app);
-  await agent.post("/login").type("form").send({ password: "senha-de-teste" });
+  await agent
+    .post("/login")
+    .type("form")
+    .send({ username: "danilo", password: "senha-de-teste" });
   return agent;
 }
 

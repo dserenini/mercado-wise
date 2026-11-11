@@ -13,8 +13,10 @@ import {
   requeue,
 } from "../db/receipts-repo.js";
 import { storeNames } from "../db/suggest-repo.js";
+import { listUsers } from "../db/users-repo.js";
 import { KEY_DUPLICATE_REASON } from "../services/ingest.js";
 import { forReview } from "../services/review.js";
+import type { CurrentUser } from "./auth.js";
 import { filterQuery, groupByMonth, parseListFilter } from "./list-filter.js";
 import { parseReviewForm } from "./review-form.js";
 
@@ -39,11 +41,21 @@ export function receiptRoutes({
 
   router.get("/", async (req, res) => {
     await failStaleReads(db);
-    const { filter, form, active } = parseListFilter(req.query);
+    const { filter, form, active, owner } = parseListFilter(req.query);
     // Lembra os filtros para voltar a eles depois de abrir/confirmar uma nota.
     if (req.session) req.session.listQuery = filterQuery(form);
+    const me: CurrentUser = res.locals.currentUser;
+    const users = await listUsers(db);
+    // Nome que não existe: mostra as minhas (como sem filtro).
+    filter.userId =
+      owner === "all"
+        ? null
+        : owner === "mine"
+          ? me.id
+          : (users.find((u) => u.username === owner.username)?.id ?? me.id);
     const receipts = await listReceipts(db, filter);
     res.render("list", {
+      users,
       receipts,
       groups: groupByMonth(receipts, filter.order),
       form,
@@ -86,7 +98,10 @@ export function receiptRoutes({
     const results = [];
     for (const file of files) {
       try {
-        const result = await accept(file.buffer);
+        const result = await accept(
+          file.buffer,
+          (res.locals.currentUser as CurrentUser).id,
+        );
         if (result.kind === "queued") background(process(result.id));
         results.push(result);
       } catch (error) {

@@ -3,10 +3,16 @@
   <h1>mercado-wise</h1>
   <form method="post" action="/login">
     <label>
-      Senha
-      <input type="password" name="password" autocomplete="current-password" required autofocus
+      Usuário
+      <input name="username" value="<%= username %>" autocomplete="username" autocapitalize="none"
+        spellcheck="false" required <%= username ? "" : "autofocus" %>
         <% if (error) { %>aria-invalid="true"<% } %>>
-      <% if (error) { %><small><%= error %></small><% } %>
+    </label>
+    <label>
+      Senha
+      <input type="password" name="password" autocomplete="current-password" required
+        <%= username ? "autofocus" : "" %> <% if (error) { %>aria-invalid="true" aria-describedby="login-error"<% } %>>
+      <% if (error) { %><small id="login-error"><%= error %></small><% } %>
     </label>
     <button type="submit">Entrar</button>
   </form>

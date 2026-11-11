@@ -26,7 +26,7 @@ if (secure) app.set("trust proxy", 1);
 app.use(
   createApp({
     db,
-    accept: (photo) => acceptPhoto(db, photo),
+    accept: (photo, userId) => acceptPhoto(db, photo, userId),
     process: (id) => processReceipt(db, id, { lookup: (ean) => fetchOff(ean) }),
     // Na Vercel, a função continua viva até a leitura terminar; fora dela (local),
     // waitUntil não faz nada e a promessa roda normalmente no processo.

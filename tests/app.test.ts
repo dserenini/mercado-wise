@@ -55,7 +55,7 @@ async function loggedIn() {
   await agent
     .post("/login")
     .type("form")
-    .send({ password: PASSWORD })
+    .send({ username: "danilo", password: PASSWORD })
     .expect(303);
   return agent;
 }
@@ -131,7 +131,7 @@ describe("login", () => {
     await request(app())
       .post("/login")
       .type("form")
-      .send({ password: "nao" })
+      .send({ username: "danilo", password: "nao" })
       .expect(401);
     const agent = await loggedIn();
     await agent.get("/").expect(200);
