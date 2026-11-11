@@ -7,7 +7,7 @@ import {
   ItemInterpretedSchema,
 } from "../schemas/interpretation.js";
 import type { ItemRead } from "../schemas/receipt.js";
-import { claudeClient } from "./claude.js";
+import { aiClient } from "./claude.js";
 
 // v2: ajustada com a revisão manual de 168 itens (eval/ground-truth/interpretation-v1.json).
 // v3: espécie sempre na variante (inclusive frango), sem trocar o tipo de produto.
@@ -180,7 +180,7 @@ export async function interpretItems(
   if (pending.length === 0) return { items: result, call: null };
 
   // 2) O resto vai num lote único para a IA.
-  const client = options.client ?? claudeClient();
+  const client = options.client ?? aiClient();
   const model = options.model ?? config.INTERPRETER_MODEL;
   const effort = options.effort ?? config.INTERPRETER_EFFORT;
   const input = pending.map(({ index, item }) => ({

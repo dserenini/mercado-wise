@@ -11,6 +11,10 @@ const EnvSchema = z.object({
   // Opcional aqui: o SDK da Anthropic também acha a credencial sozinho
   // (ANTHROPIC_API_KEY ou perfil do `ant auth login`). Se faltar, o erro vem na chamada.
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  // Quem lê e interpreta: Claude (padrão) ou OpenAI (usa OPENAI_API_KEY, e os
+  // READER_MODEL/INTERPRETER_MODEL precisam ser modelos da OpenAI).
+  AI_PROVIDER: z.enum(["anthropic", "openai"]).default("anthropic"),
+  OPENAI_API_KEY: z.string().min(1).optional(),
   // Postgres do Supabase pelo "Transaction pooler" (porta 6543). Opcional aqui para
   // que testes e scripts sem banco rodem sem ela; quem usa o banco exige (db/connect).
   DATABASE_URL: z.url().optional(),
