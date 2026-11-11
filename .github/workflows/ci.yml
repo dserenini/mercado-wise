@@ -5,7 +5,7 @@ name: CI
 # (integração com o GitHub), não deste workflow. Os testes usam PGlite (Postgres
 # em memória): sem segredos aqui.
 #
-# Para ser rápido: lint+typecheck e os testes (divididos em 3) rodam em paralelo,
+# Para ser rápido: lint+typecheck e os testes (divididos em 6) rodam em paralelo,
 # e o node_modules fica em cache enquanto o package-lock.json não mudar.
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        shard: [lint, 1/3, 2/3, 3/3]
+        shard: [lint, 1/6, 2/6, 3/6, 4/6, 5/6, 6/6]
     name: ${{ matrix.shard == 'lint' && 'lint + typecheck' || format('test {0}', matrix.shard) }}
     steps:
       - uses: actions/checkout@v4
