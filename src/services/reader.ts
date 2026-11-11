@@ -6,7 +6,7 @@ import {
   type ReceiptRead,
   ReceiptReadSchema,
 } from "../schemas/receipt.js";
-import { claudeClient } from "./claude.js";
+import { aiClient } from "./claude.js";
 import type { PreparedImage } from "./image.js";
 import { isValidGtin } from "./validators.js";
 
@@ -72,7 +72,7 @@ export async function readReceipt(
   image: PreparedImage,
   options: { client?: Anthropic; model?: string; effort?: Effort } = {},
 ): Promise<ReadResult> {
-  const client = options.client ?? claudeClient();
+  const client = options.client ?? aiClient();
   const model = options.model ?? config.READER_MODEL;
   const effort = options.effort ?? config.READER_EFFORT;
 
