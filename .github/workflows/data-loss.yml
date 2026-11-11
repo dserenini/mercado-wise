@@ -55,4 +55,5 @@ jobs:
           gh pr comment ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" \
             --body-file comment.md
       - name: Veredito
-        run: tail -n 1 answer.md | grep -qx 'VEREDITO: SEGURO'
+        run: |
+          tail -n 1 answer.md | grep -qx 'VEREDITO: SEGURO'
