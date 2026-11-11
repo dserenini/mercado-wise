@@ -45,6 +45,8 @@ export interface AiChoice {
 
 /** O que a tela mostra: nunca a chave, só os 4 últimos caracteres. */
 export interface AiSettingsView {
+  /** false: banco sem a migration 006; a tela mostra o .env e não deixa salvar */
+  ready: boolean;
   provider: Provider;
   providers: Record<
     Provider,
@@ -65,11 +67,24 @@ export interface AiSettingsForm {
   clearKey: Record<Provider, boolean>;
 }
 
-async function readAll(db: Db): Promise<Map<string, string>> {
-  const rows = await db.query<{ key: string; value: string }>(
-    "select key, value from app.settings",
-  );
-  return new Map(rows.map((r) => [r.key, r.value]));
+/** Postgres "relation does not exist": a migration 006 ainda não rodou. */
+export const isMissingTable = (error: unknown) =>
+  (error as { code?: unknown } | null)?.code === "42P01";
+
+/**
+ * Tudo o que foi salvo na tela. null: a tabela ainda não existe (banco sem a
+ * migration 006). Aí vale só o .env, exatamente como antes da tela existir.
+ */
+async function readAll(db: Db): Promise<Map<string, string> | null> {
+  try {
+    const rows = await db.query<{ key: string; value: string }>(
+      "select key, value from app.settings",
+    );
+    return new Map(rows.map((r) => [r.key, r.value]));
+  } catch (error) {
+    if (isMissingTable(error)) return null;
+    throw error;
+  }
 }
 
 function resolve(
@@ -105,7 +120,7 @@ export async function resolveAi(
   db: Db,
   secret = config.SESSION_SECRET,
 ): Promise<AiChoice> {
-  const stored = await readAll(db);
+  const stored = (await readAll(db)) ?? new Map();
   const provider = activeProvider(stored);
   const { apiKey, readerModel, interpreterModel } = resolve(
     stored,
@@ -121,14 +136,15 @@ export async function aiKeyFor(
   secret: string,
   provider: Provider,
 ): Promise<string | undefined> {
-  return resolve(await readAll(db), secret, provider).apiKey;
+  return resolve((await readAll(db)) ?? new Map(), secret, provider).apiKey;
 }
 
 export async function aiSettingsView(
   db: Db,
   secret: string,
 ): Promise<AiSettingsView> {
-  const stored = await readAll(db);
+  const saved = await readAll(db);
+  const stored = saved ?? new Map<string, string>();
   const view = (provider: Provider) => {
     const r = resolve(stored, secret, provider);
     return {
@@ -143,6 +159,7 @@ export async function aiSettingsView(
     };
   };
   return {
+    ready: saved !== null,
     provider: activeProvider(stored),
     providers: { anthropic: view("anthropic"), openai: view("openai") },
   };

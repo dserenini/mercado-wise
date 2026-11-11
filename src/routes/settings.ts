@@ -4,6 +4,7 @@ import {
   type AiSettingsForm,
   aiKeyFor,
   aiSettingsView,
+  isMissingTable,
   PROVIDER_LABEL,
   PROVIDERS,
   saveAiSettings,
@@ -59,7 +60,18 @@ export function settingsRoutes({ db, sessionSecret }: AppDeps): Router {
       form.keys[p] = field(body[`${p}_key`], 500);
       form.clearKey[p] = body[`${p}_clear_key`] === "1";
     }
-    await saveAiSettings(db, sessionSecret, form);
+    try {
+      await saveAiSettings(db, sessionSecret, form);
+    } catch (error) {
+      if (!isMissingTable(error)) throw error;
+      res.status(503).render("message", {
+        title: "Configurações indisponíveis",
+        message:
+          "O banco ainda não tem a tabela de configurações: rode `npm run migrate`. " +
+          "Até lá, o app usa as variáveis de ambiente.",
+      });
+      return;
+    }
     res.redirect(303, "/settings?salvo=1");
   });
 

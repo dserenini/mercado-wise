@@ -114,3 +114,27 @@ describe("botão Testar", () => {
     expect(await db.query("select 1 from app.settings")).toEqual([]);
   });
 });
+
+describe("banco sem a migration 006 (sem app.settings)", () => {
+  beforeEach(async () => {
+    await db.exec("drop table app.settings");
+  });
+
+  it("a nota usa o .env, como antes da tela existir", async () => {
+    const ai = await resolveAi(db, SECRET);
+    expect(ai.provider).toBe(process.env.AI_PROVIDER ?? "anthropic");
+    expect(ai.readerModel).toBeTruthy();
+  });
+
+  it("a tela abre avisando, e salvar responde 503 sem quebrar", async () => {
+    const agent = await loggedIn();
+    const page = await agent.get("/settings").expect(200);
+    expect(page.text).toContain("npm run migrate");
+    expect((await aiSettingsView(db, SECRET)).ready).toBe(false);
+    await agent
+      .post("/settings")
+      .type("form")
+      .send({ provider: "openai" })
+      .expect(503);
+  });
+});

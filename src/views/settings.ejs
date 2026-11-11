@@ -1,5 +1,6 @@
 <%- include("partials/top", { title: "Configurações" }) %>
 <h1>Configurações</h1>
+<% if (!settings.ready) { %><p class="error-box" role="alert">O banco ainda não tem a tabela de configurações (rode <code>npm run migrate</code>). Até lá, o app usa as variáveis de ambiente, mostradas abaixo, e nada pode ser salvo aqui.</p><% } %>
 <% if (saved) { %><p class="flash" role="status">Configurações salvas. Valem para a próxima nota enviada.</p><% } %>
 
 <form method="post" action="/settings" class="settings">
@@ -49,7 +50,7 @@
     </article>
   <% } %>
 
-  <button type="submit">Salvar</button>
+  <button type="submit" <%= settings.ready ? "" : "disabled" %>>Salvar</button>
 </form>
 <script>
   // Testar: manda a chave digitada (ou nenhuma, para usar a atual) e os modelos do
