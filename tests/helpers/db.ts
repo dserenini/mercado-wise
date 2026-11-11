@@ -38,6 +38,12 @@ async function migratedTemplate(): Promise<PGlite> {
   return pg;
 }
 
+/** Postgres em memória sem nenhuma migration (para testar uma migration). */
+export async function emptyDb(): Promise<Db> {
+  const pg = new PGlite();
+  return wrap(pg, pg);
+}
+
 /** Postgres de verdade, em memória, já com as migrations aplicadas. */
 export async function testDb(): Promise<Db> {
   template ??= migratedTemplate();

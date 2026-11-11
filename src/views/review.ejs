@@ -13,6 +13,7 @@
 
 <hgroup>
   <h1><%= r.store_name || "Mercado não identificado" %></h1>
+  <p class="owner-line"><%- include("partials/owner", { receipt: r }) %></p>
   <p>
     <% if (r.status !== "confirmed") { %>
       Revise e confirme. <%- include("partials/light", { light: r.traffic_light }) %>
