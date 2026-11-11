@@ -41,7 +41,6 @@ function app() {
       accepted.push(photo);
       return acceptResult;
     },
-    acceptPage: async () => ({ kind: "error" as const, message: "" }),
 
     process: async (id) => {
       processed.push(id);
@@ -116,7 +115,6 @@ describe("login", () => {
     const broken = createApp({
       db: { ...db, query: () => Promise.reject(new Error("banco fora")) },
       accept: async () => acceptResult,
-      acceptPage: async () => ({ kind: "error" as const, message: "" }),
 
       process: async () => {},
       background: () => {},

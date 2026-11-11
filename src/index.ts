@@ -3,7 +3,7 @@ import express from "express";
 import { config } from "./config.js";
 import { createApp } from "./create-app.js";
 import { connect } from "./db/connect.js";
-import { acceptPage, acceptPhoto, processReceipt } from "./services/ingest.js";
+import { acceptPhoto, processReceipt } from "./services/ingest.js";
 import { fetchOff } from "./services/off.js";
 import { onlineLookup } from "./services/stores.js";
 
@@ -27,8 +27,7 @@ if (secure) app.set("trust proxy", 1);
 app.use(
   createApp({
     db,
-    accept: (photo, userId, qrUrl) => acceptPhoto(db, photo, userId, qrUrl),
-    acceptPage: (qrUrl, text, userId) => acceptPage(db, qrUrl, text, userId),
+    accept: (photo, userId) => acceptPhoto(db, photo, userId),
     process: (id) =>
       processReceipt(db, id, {
         lookup: (ean) => fetchOff(ean),
