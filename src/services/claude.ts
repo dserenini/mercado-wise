@@ -34,3 +34,32 @@ export function aiClient(
     messages: { parse: (params: never) => real().messages.parse(params) },
   } as unknown as Anthropic;
 }
+
+/**
+ * Botão "Testar" da tela de Configurações: confere a chave e se cada modelo existe
+ * na conta, pela lista de modelos da API (não gera texto, não custa nada).
+ * Devolve null se está tudo certo, ou a mensagem do problema.
+ */
+export async function checkAi(
+  provider: Provider,
+  apiKey: string | undefined,
+  models: string[],
+): Promise<string | null> {
+  if (provider === "openai" && !apiKey) return "Nenhuma chave cadastrada.";
+  for (const model of new Set(models.filter(Boolean))) {
+    try {
+      if (provider === "openai")
+        await new OpenAI({ apiKey, maxRetries: 1 }).models.retrieve(model);
+      else
+        await new Anthropic({ apiKey, maxRetries: 1 }).models.retrieve(model);
+    } catch (error) {
+      const status = (error as { status?: unknown }).status;
+      // Sem chave e sem `ant auth login`: o SDK nem chega a chamar a API.
+      if (status === undefined && !apiKey) return "Nenhuma chave cadastrada.";
+      if (status === 401) return "A API recusou a chave.";
+      if (status === 404) return `O modelo "${model}" não existe nesta conta.`;
+      return `Não foi possível conferir agora (${(error as Error).message}).`;
+    }
+  }
+  return null;
+}

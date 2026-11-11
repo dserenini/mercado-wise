@@ -543,3 +543,18 @@ details.item .fields .suggested {
 .status-field details.dropdown li label {
   font-size: 0.95rem;
 }
+
+/* Configurações: resultado do botão "Testar" */
+.test-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+.test-ok {
+  color: var(--mw-ok);
+}
+.test-bad {
+  color: var(--mw-bad);
+}

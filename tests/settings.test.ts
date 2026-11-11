@@ -101,3 +101,16 @@ describe("configurações da IA", () => {
       .expect(400);
   });
 });
+
+describe("botão Testar", () => {
+  it("recusa IA fora da lista e não salva nada", async () => {
+    const agent = await loggedIn();
+    const res = await agent
+      .post("/settings/test")
+      .type("form")
+      .send({ provider: "gemini" })
+      .expect(400);
+    expect(res.body.ok).toBe(false);
+    expect(await db.query("select 1 from app.settings")).toEqual([]);
+  });
+});
