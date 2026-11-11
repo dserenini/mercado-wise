@@ -1,9 +1,11 @@
 name: CI
 
-# Confere cada push e pull request. O deploy é da Vercel (integração com o GitHub),
+# Confere cada pull request e cada push na main (só na main: num PR, o push da
+# branch já dispara o pull_request, e rodaria duas vezes). O deploy é da Vercel (integração com o GitHub),
 # não deste workflow. Os testes usam PGlite (Postgres em memória): sem segredos aqui.
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
