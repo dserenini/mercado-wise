@@ -2,7 +2,7 @@ name: Perda de dados
 
 # Um modelo barato (Claude Haiku) lê só o diff do PR e responde uma pergunta:
 # isto pode fazer a gente perder dados? Falha quando o veredito é RISCO.
-# O resultado vira um comentário no PR (sempre o mesmo, editado a cada push).
+# O resultado vira um comentário novo no PR a cada push.
 # Alarme falso: leia o comentário, explique no PR por que não é risco e mergeie.
 on:
   pull_request:
@@ -53,6 +53,6 @@ jobs:
           if tail -n 1 answer.md | grep -qx 'VEREDITO: SEGURO'; then title="✅ Sem risco de perda de dados"; else title="⚠️ Possível risco de perda de dados"; fi
           { echo "### $title"; echo; cat answer.md; echo; echo "<sub>Claude Haiku 5.5 lendo o diff até \`${HEAD_SHA::7}\`. Pode errar: na dúvida, leia o diff.</sub>"; } > comment.md
           gh pr comment ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" \
-            --body-file comment.md --edit-last --create-if-none
+            --body-file comment.md
       - name: Veredito
         run: tail -n 1 answer.md | grep -qx 'VEREDITO: SEGURO'
