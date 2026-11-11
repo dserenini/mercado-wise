@@ -2,11 +2,13 @@ import { Router } from "express";
 import type { AppDeps } from "../create-app.js";
 import {
   type AiSettingsForm,
+  aiKeyFor,
   aiSettingsView,
   PROVIDER_LABEL,
   PROVIDERS,
   saveAiSettings,
 } from "../services/ai-settings.js";
+import { checkAi } from "../services/claude.js";
 
 // Tela de configurações: qual IA usar, chave e modelos de cada uma.
 
@@ -59,6 +61,27 @@ export function settingsRoutes({ db, sessionSecret }: AppDeps): Router {
     }
     await saveAiSettings(db, sessionSecret, form);
     res.redirect(303, "/settings?salvo=1");
+  });
+
+  // Botão "Testar" (via fetch, JSON): usa a chave digitada, se houver, senão a em
+  // uso; e os modelos que estão no formulário. Não salva nada.
+  router.post("/settings/test", async (req, res) => {
+    const body = req.body ?? {};
+    const provider = PROVIDERS.find((p) => p === body.provider);
+    if (!provider) {
+      res.status(400).json({ ok: false, message: "IA inválida." });
+      return;
+    }
+    const typed = field(body.key, 500);
+    const problem = await checkAi(
+      provider,
+      typed || (await aiKeyFor(db, sessionSecret, provider)),
+      [model(body.reader_model), model(body.interpreter_model)],
+    );
+    res.json({
+      ok: problem === null,
+      message: problem ?? "Chave e modelos OK.",
+    });
   });
 
   return router;

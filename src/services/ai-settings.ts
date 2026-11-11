@@ -18,10 +18,17 @@ export const PROVIDER_LABEL: Record<Provider, string> = {
   openai: "OpenAI",
 };
 
-const DEFAULT_MODEL: Record<Provider, string> = {
-  anthropic: "claude-sonnet-5-5",
-  openai: "gpt-5.5",
-};
+// Padrões por etapa. OpenAI: medidos numa nota de teste em 2026-11 (gpt-5.6-terra
+// leu 11/12 itens a ~US$ 0,03/nota; gpt-5.6-luna interpretou 10/10 marcas a uma
+// fração do custo). Claude: os modelos com que os prompts foram ajustados.
+const DEFAULT_MODEL: Record<Provider, { reader: string; interpreter: string }> =
+  {
+    anthropic: {
+      reader: "claude-sonnet-5-5",
+      interpreter: "claude-sonnet-5-5",
+    },
+    openai: { reader: "gpt-5.6-terra", interpreter: "gpt-5.6-luna" },
+  };
 
 const ENV_KEY: Record<Provider, string | undefined> = {
   anthropic: config.ANTHROPIC_API_KEY,
@@ -74,16 +81,18 @@ function resolve(
   const savedKey = saved && secret ? decrypt(saved, secret) : null;
   // Modelo do .env só vale para a IA escolhida no .env (READER_MODEL=gpt-… não
   // serve para o Claude).
-  const envModel = (m: string) =>
-    provider === config.AI_PROVIDER ? m : DEFAULT_MODEL[provider];
+  // Sem READER_MODEL/INTERPRETER_MODEL no .env, vale o padrão da IA.
+  const envModel = (m: string | undefined, stage: "reader" | "interpreter") =>
+    (provider === config.AI_PROVIDER && m) || DEFAULT_MODEL[provider][stage];
   return {
     savedKey,
     apiKey: savedKey ?? ENV_KEY[provider],
     readerModel:
-      stored.get(`${provider}.reader_model`) ?? envModel(config.READER_MODEL),
+      stored.get(`${provider}.reader_model`) ??
+      envModel(process.env.READER_MODEL, "reader"),
     interpreterModel:
       stored.get(`${provider}.interpreter_model`) ??
-      envModel(config.INTERPRETER_MODEL),
+      envModel(process.env.INTERPRETER_MODEL, "interpreter"),
   };
 }
 
@@ -104,6 +113,15 @@ export async function resolveAi(
     provider,
   );
   return { provider, apiKey, readerModel, interpreterModel };
+}
+
+/** Chave em uso para uma IA (salva na tela ou do .env), para o botão "Testar". */
+export async function aiKeyFor(
+  db: Db,
+  secret: string,
+  provider: Provider,
+): Promise<string | undefined> {
+  return resolve(await readAll(db), secret, provider).apiKey;
 }
 
 export async function aiSettingsView(
@@ -147,9 +165,14 @@ export async function saveAiSettings(
         : tx.query("delete from app.settings where key = $1", [key]);
 
     await put("ai.provider", form.provider);
+    // Modelo igual ao padrão não é gravado: segue o padrão se ele mudar depois.
+    const model = (p: Provider, stage: "reader" | "interpreter") => {
+      const m = form.models[p][stage];
+      return m === DEFAULT_MODEL[p][stage] ? "" : m;
+    };
     for (const p of PROVIDERS) {
-      await put(`${p}.reader_model`, form.models[p].reader);
-      await put(`${p}.interpreter_model`, form.models[p].interpreter);
+      await put(`${p}.reader_model`, model(p, "reader"));
+      await put(`${p}.interpreter_model`, model(p, "interpreter"));
       if (form.clearKey[p]) await put(`${p}.key`, "");
       else if (form.keys[p])
         await put(`${p}.key`, encrypt(form.keys[p], secret));
