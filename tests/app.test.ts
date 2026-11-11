@@ -102,6 +102,26 @@ describe("login", () => {
     await request(app()).get("/health").expect(200, { status: "ok" });
   });
 
+  it("/keepalive consulta o banco sem login e não mostra dados", async () => {
+    await draft();
+    const res = await request(app())
+      .get("/keepalive")
+      .expect(200, { ok: true });
+    expect(res.headers["cache-control"]).toBe("no-store");
+  });
+
+  it("/keepalive avisa quando o banco não responde", async () => {
+    const broken = createApp({
+      db: { ...db, query: () => Promise.reject(new Error("banco fora")) },
+      accept: async () => acceptResult,
+      process: async () => {},
+      background: () => {},
+      passwordHash,
+      sessionSecret: "x".repeat(32),
+    });
+    await request(broken).get("/keepalive").expect(503, { ok: false });
+  });
+
   it("sem login, manda para /login", async () => {
     const res = await request(app()).get("/").expect(303);
     expect(res.headers.location).toBe("/login");

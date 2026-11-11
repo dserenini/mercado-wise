@@ -2,6 +2,7 @@ import { join } from "node:path";
 import cookieSession from "cookie-session";
 import express, { type ErrorRequestHandler } from "express";
 import type { Db } from "./db/client.js";
+import { keepAlive } from "./db/keepalive.js";
 import { centsToInput, decimalToInput, formatCents } from "./lib/money.js";
 import { authRoutes, requireLogin } from "./routes/auth.js";
 import { receiptRoutes } from "./routes/receipts.js";
@@ -43,6 +44,20 @@ export function createApp(deps: AppDeps) {
 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
+  });
+
+  // Chamada pelo agendador da Vercel (crons no vercel.json), sem login. O Supabase
+  // gratuito pausa o projeto que passa uma semana quase sem consultas; estas são
+  // consultas reais e leves, e a resposta não revela nada do banco.
+  app.get("/keepalive", async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    try {
+      await keepAlive(deps.db);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error(error);
+      res.status(503).json({ ok: false });
+    }
   });
 
   // Arquivos de public/ (CSS, JS, Pico). Na Vercel quem serve é a CDN e esta linha
