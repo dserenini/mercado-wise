@@ -1,8 +1,15 @@
-import { PGlite, type Transaction } from "@electric-sql/pglite";
+import {
+  PGlite,
+  type PGliteInterface,
+  type Transaction,
+} from "@electric-sql/pglite";
 import type { Db } from "../../src/db/client.js";
 import { migrate } from "../../src/db/migrate.js";
 
-function wrap(pg: PGlite | Transaction, root: PGlite | null): Db {
+function wrap(
+  pg: PGliteInterface | Transaction,
+  root: PGliteInterface | null,
+): Db {
   return {
     async query<T>(sql: string, params: unknown[] = []) {
       return (await pg.query<T>(sql, params)).rows;
@@ -21,10 +28,19 @@ function wrap(pg: PGlite | Transaction, root: PGlite | null): Db {
   };
 }
 
+// Subir o PGlite e migrar custa ~0,5 s; clonar um banco já migrado, ~0,1 s.
+// O modelo é criado uma vez por arquivo de teste e nunca é entregue a um teste.
+let template: Promise<PGlite> | undefined;
+
+async function migratedTemplate(): Promise<PGlite> {
+  const pg = new PGlite();
+  await migrate(wrap(pg, pg));
+  return pg;
+}
+
 /** Postgres de verdade, em memória, já com as migrations aplicadas. */
 export async function testDb(): Promise<Db> {
-  const pg = new PGlite();
-  const db = wrap(pg, pg);
-  await migrate(db);
-  return db;
+  template ??= migratedTemplate();
+  const pg = await (await template).clone();
+  return wrap(pg, pg);
 }
