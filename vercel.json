@@ -1,6 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["gru1"],
+  "crons": [
+    { "path": "/keepalive", "schedule": "0 3 * * *" },
+    { "path": "/keepalive", "schedule": "0 9 * * *" },
+    { "path": "/keepalive", "schedule": "0 15 * * *" },
+    { "path": "/keepalive", "schedule": "0 21 * * *" }
+  ],
   "functions": {
     "src/index.ts": {
       "includeFiles": "src/views/**",

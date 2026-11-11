@@ -67,6 +67,9 @@ branches geram um deploy de preview.
 - Estáticos: `public/` (servidos pela CDN; `express.static` só vale localmente).
 - [vercel.json](vercel.json): região `gru1` (São Paulo, junto do Supabase) e as telas
   EJS incluídas na função.
+- `crons` no [vercel.json](vercel.json): a Vercel chama `/keepalive` 4 vezes por dia
+  (no plano Hobby, cada agendamento roda uma vez por dia). A rota faz consultas leves
+  para o Supabase gratuito não pausar o projeto por inatividade.
 - Variáveis no painel da Vercel: `ANTHROPIC_API_KEY`, `DATABASE_URL`,
   `APP_PASSWORD_HASH`, `SESSION_SECRET`.
 - Migrations rodam à mão (`npm run migrate`), antes do push que depende delas.
