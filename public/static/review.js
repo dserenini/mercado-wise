@@ -164,6 +164,56 @@ items.addEventListener("change", async (event) => {
 });
 
 // ---------------------------------------------------------------------------
+// Linhas iguais na mesma nota (mesmo EAN ou, sem EAN, mesma descrição): corrigir o
+// produto de uma copia a correção para as outras que o usuário ainda não mexeu. As
+// cópias ficam destacadas e vão marcadas (copied) para não contarem como digitadas.
+// ---------------------------------------------------------------------------
+function sameKey(item) {
+  const ean = item.querySelector("[data-code]").value.trim();
+  if (ean) return `ean:${ean}`;
+  const desc = item
+    .querySelector("[data-desc]")
+    .value.trim()
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+  return desc ? `desc:${desc}` : null;
+}
+
+items.addEventListener("input", (event) => {
+  if (!event.target.matches("[data-fill]")) return;
+  const item = event.target.closest("[data-item]");
+  item.dataset.touched = "1";
+  item.querySelector("[data-copied]").value = "";
+});
+
+items.addEventListener("change", (event) => {
+  if (!event.target.matches("[data-fill]")) return;
+  const source = event.target.closest("[data-item]");
+  const key = sameKey(source);
+  if (!key) return;
+  const values = new Map(
+    [...source.querySelectorAll("[data-fill]")].map((f) => [
+      f.dataset.fill,
+      f.value,
+    ]),
+  );
+  for (const other of items.querySelectorAll("[data-item]")) {
+    if (other === source || other.dataset.touched) continue;
+    if (sameKey(other) !== key) continue;
+    let changed = false;
+    for (const field of other.querySelectorAll("[data-fill]")) {
+      const value = values.get(field.dataset.fill) ?? "";
+      if (field.value === value) continue;
+      field.value = value;
+      field.classList.add("suggested");
+      field.title = "Copiado da linha igual desta nota";
+      changed = true;
+    }
+    if (changed) other.querySelector("[data-copied]").value = "1";
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Conta da linha (mesma regra de src/services/derive.ts): com dois de quantidade,
 // preço e total, o terceiro vazio é calculado — só quando a resposta é única. O
 // total impresso de item pesado vem truncado ou arredondado, por isso a busca.

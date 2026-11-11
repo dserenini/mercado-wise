@@ -15,7 +15,11 @@ na tag `legacy-v0`.
    descrição crua vira produto, marca, variante, embalagem e categoria. Consulta
    antes a **memória** de itens confirmados ([src/db/memory.ts](src/db/memory.ts)).
 4. **Revisar e confirmar** (web): nada vira dado definitivo sem a revisão. A
-   confirmação ensina a memória.
+   confirmação ensina a memória. Na revisão, o app reaplica a memória, sugere a marca
+   pelo código de barras ([Open Food Facts](https://world.openfoodfacts.org), consultado
+   em segundo plano depois da leitura; só o EAN sai do app) ou completando uma
+   abreviação com uma marca já confirmada, e copia a correção de uma linha para as
+   linhas iguais da mesma nota ([src/services/review.ts](src/services/review.ts)).
 
 [src/services/ingest.ts](src/services/ingest.ts) junta tudo: foto → rascunho no banco
 (com checagem de nota duplicada antes de gastar a interpretação).

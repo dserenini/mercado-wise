@@ -1,5 +1,6 @@
 import type { Db } from "../db/client.js";
 import { findProbableDuplicate } from "../db/duplicates-repo.js";
+import { lookupEans } from "../db/ean-repo.js";
 import { createDbMemory } from "../db/memory.js";
 import {
   claimReadSlot,
@@ -7,6 +8,7 @@ import {
   draftFromPipeline,
   fillDraft,
   findReceiptByAccessKey,
+  getReceipt,
   getReceiptImage,
   markDuplicate,
   markFailed,
@@ -20,8 +22,10 @@ import {
   prepareImage,
 } from "./image.js";
 import type { InterpretationMemory } from "./interpreter.js";
+import type { OffFetch } from "./off.js";
 import { completeReading } from "./pipeline.js";
 import { ReadError, type ReadResult, readReceipt } from "./reader.js";
+import { isManufacturerEan } from "./validators.js";
 
 // Envio de nota em duas etapas:
 // 1. acceptPhoto (rápido, na requisição do envio): prepara a foto, recusa foto já
@@ -64,6 +68,8 @@ export interface ProcessOptions {
    *  leitura, cabe nos 5 min que a Vercel dá para cada envio) */
   pollMs?: number;
   maxWaitMs?: number;
+  /** consulta de EAN (Open Food Facts) depois da leitura; ausente = não consulta */
+  lookup?: OffFetch;
 }
 
 export async function processReceipt(
@@ -95,6 +101,9 @@ export async function processReceipt(
     // Camada 3: itens, valor, data, mercado e pagamento.
     const probable = await findProbableDuplicate(db, id);
     if (probable) await markDuplicate(db, id, probable.id, probable.reason);
+
+    // A nota já está pronta para revisar; a marca pelo código de barras chega depois.
+    if (options.lookup) await lookupDraftEans(db, id, options.lookup);
   } catch (error) {
     if (!(error instanceof ReadError)) console.error(error);
     await markFailed(
@@ -137,4 +146,18 @@ export async function ingestPhoto(
     [accepted.id],
   );
   return { kind: "saved", id: accepted.id, status: row?.status ?? "failed" };
+}
+
+/** EANs do fabricante que a memória não resolveu → Open Food Facts. Nunca falha. */
+async function lookupDraftEans(db: Db, id: number, lookup: OffFetch) {
+  try {
+    const saved = await getReceipt(db, id);
+    const eans = (saved?.items ?? [])
+      .filter((i) => i.interpretation_source !== "memory")
+      .map((i) => i.ean)
+      .filter((e): e is string => e !== null && isManufacturerEan(e));
+    await lookupEans(db, eans, lookup);
+  } catch (error) {
+    console.error(error);
+  }
 }

@@ -43,7 +43,7 @@ export async function loadReportNotes(db: Db): Promise<NoteInput[]> {
       r.status === "confirmed"
         ? await db.query<ConfirmedLine>(
             `select raw_description, quantity, unit_price_cents, total_price_cents,
-                    product, brand, variant
+                    product, brand, variant, edited_by_user
                from app.receipt_items where receipt_id = $1 order by position`,
             [r.id],
           )

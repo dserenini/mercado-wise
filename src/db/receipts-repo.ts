@@ -353,6 +353,11 @@ export interface ItemRow {
   edited_by_user: boolean;
   /** só na tela: campos preenchidos pela memória num item de descrição ilegível */
   suggested?: boolean;
+  /** marca trocada na revisão: pelo código de barras (Open Food Facts) ou
+   *  completada pelo histórico; `from` é o que a leitura trazia */
+  brand_hint?: { source: "off" | "history"; from: string | null };
+  /** nome do produto no Open Food Facts, para conferir variante e embalagem */
+  off_name?: string;
 }
 
 // date/time viram texto no SELECT para não sofrer conversão de fuso no driver.
@@ -530,6 +535,8 @@ export interface ConfirmedItem extends ItemInterpreted {
   unit_price_cents: number | null;
   total_price_cents: number | null;
   discount_cents: number | null;
+  /** produto copiado (pela tela) de outra linha igual da mesma nota, sem mexer depois */
+  copied?: boolean;
 }
 
 const COMPARED_FIELDS = [
@@ -561,12 +568,17 @@ export interface ConfirmedHeader {
  * Substitui os itens do rascunho pela versão revisada (o usuário pode corrigir,
  * incluir e remover itens), marca a nota como confirmada e ensina a memória:
  * cada item vira produto (+ apelido do mercado). Tudo numa transação.
+ *
+ * `shown`: os itens como a tela mostrou (com memória e conta da linha aplicadas).
+ * "Editado pelo usuário" é o que difere do que ele viu, não do que a IA leu: o que a
+ * memória preencheu e ele só aceitou continua contando como memória.
  */
 export async function confirmReceipt(
   db: Db,
   id: number,
   items: ConfirmedItem[],
   header?: ConfirmedHeader,
+  shown?: ItemRow[],
 ): Promise<void> {
   await db.transaction(async (tx) => {
     const [receipt] = await tx.query<{
@@ -581,14 +593,24 @@ export async function confirmReceipt(
       "select * from app.receipt_items where receipt_id = $1",
       [id],
     );
-    const draftByPosition = new Map(draft.map((d) => [d.position, d]));
+    const draftByPosition = new Map(
+      (shown ?? draft).map((d) => [d.position, d]),
+    );
     await tx.query("delete from app.receipt_items where receipt_id = $1", [id]);
 
     for (const [position, item] of items.entries()) {
       const before = draftByPosition.get(position);
-      const edited =
+      const differs =
         !before ||
         COMPARED_FIELDS.some((f) => (before[f] ?? null) !== (item[f] ?? null));
+      // Copiado de outra linha igual que o usuário corrigiu: quem digitou foi a
+      // linha de origem; esta conta como memória.
+      const edited = differs && !item.copied;
+      const source = item.copied
+        ? "memory"
+        : edited
+          ? "user"
+          : (before?.interpretation_source ?? "user");
       const productId = await rememberItem(
         tx,
         item,
@@ -631,8 +653,8 @@ export async function confirmReceipt(
           item.package_size,
           item.package_unit,
           item.category,
-          edited ? "high" : (before?.confidence ?? "high"),
-          edited ? "user" : (before?.interpretation_source ?? "user"),
+          edited || item.copied ? "high" : (before?.confidence ?? "high"),
+          source,
           productId,
           checkStatus(check),
           JSON.stringify(check.problems),

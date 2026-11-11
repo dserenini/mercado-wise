@@ -51,6 +51,14 @@ describe("parseReviewForm", () => {
     });
   });
 
+  it("marca a linha copiada de outra igual pela tela", () => {
+    const form = parseReviewForm({
+      ...body,
+      items: [limao, { ...limao, copied: "1" }],
+    });
+    expect(form.ok && form.items.map((i) => i.copied)).toEqual([false, true]);
+  });
+
   it("aceita itens como objeto (índices novos vindos da tela) mantendo a ordem", () => {
     const form = parseReviewForm({
       ...body,
