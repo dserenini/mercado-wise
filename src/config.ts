@@ -25,4 +25,8 @@ const EnvSchema = z.object({
 
 export type Config = z.infer<typeof EnvSchema>;
 
-export const config: Config = EnvSchema.parse(process.env);
+// Linha vazia no .env (ex.: `ANTHROPIC_API_KEY=` copiado do .env.example) conta
+// como ausente, senão a validação quebra antes de usar o valor padrão/opcional.
+export const config: Config = EnvSchema.parse(
+  Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== "")),
+);
