@@ -90,6 +90,11 @@
   <%# Sugestões do campo "Na nota", preenchidas pelo review.js conforme a digitação. %>
   <datalist id="item-suggestions"></datalist>
 
+  <div class="items-toggle">
+    <button type="button" class="secondary outline" data-open-all="1">Expandir todos</button>
+    <button type="button" class="secondary outline" data-open-all="">Recolher todos</button>
+  </div>
+
   <div id="items">
     <% items.forEach((it, i) => { %>
       <%- include("partials/item", { key: i, it, open: needsLook(it), SOURCE, STATUS }) %>

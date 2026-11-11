@@ -61,6 +61,15 @@ function recalc() {
 
 form.addEventListener("input", recalc);
 
+// Expandir / recolher todos os itens de uma vez.
+for (const button of document.querySelectorAll("[data-open-all]")) {
+  button.addEventListener("click", () => {
+    for (const item of items.querySelectorAll("[data-item]")) {
+      item.open = Boolean(button.dataset.openAll);
+    }
+  });
+}
+
 document.getElementById("add-item").addEventListener("click", () => {
   newCount += 1;
   const html = template.innerHTML.replaceAll("__KEY__", `n${newCount}`);
