@@ -33,6 +33,23 @@ Copie `.env.example` para `.env` e preencha:
 
 Depois: `npm run migrate`.
 
+### Rodar local (sem Supabase)
+
+Precisa de Node 24 e Docker. O [compose.yaml](compose.yaml) sobe um Postgres na porta 5433:
+
+```bash
+npm install
+docker compose up -d
+cp .env.example .env
+# no .env: DATABASE_URL=postgres://postgres:postgres@localhost:5433/mercado
+npm run setup-login   # cole as duas linhas no .env
+npm run migrate
+npm run dev           # http://localhost:3000
+```
+
+Sem `ANTHROPIC_API_KEY`, o login e as telas funcionam, mas ler fotos falha.
+Variáveis deixadas vazias no `.env` são ignoradas.
+
 ## Comandos
 
 ```bash
