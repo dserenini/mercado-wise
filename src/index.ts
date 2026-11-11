@@ -5,6 +5,7 @@ import { createApp } from "./create-app.js";
 import { connect } from "./db/connect.js";
 import { acceptPhoto, processReceipt } from "./services/ingest.js";
 import { fetchOff } from "./services/off.js";
+import { onlineLookup } from "./services/stores.js";
 
 // Ponto de entrada do app: a Vercel procura src/index.ts, exige que ele importe o
 // express e usa o export default. Localmente, src/server.ts importa este arquivo e
@@ -27,12 +28,17 @@ app.use(
   createApp({
     db,
     accept: (photo, userId) => acceptPhoto(db, photo, userId),
-    process: (id) => processReceipt(db, id, { lookup: (ean) => fetchOff(ean) }),
+    process: (id) =>
+      processReceipt(db, id, {
+        lookup: (ean) => fetchOff(ean),
+        storeLookup: onlineLookup,
+      }),
     // Na Vercel, a função continua viva até a leitura terminar; fora dela (local),
     // waitUntil não faz nada e a promessa roda normalmente no processo.
     background: (task) => {
       waitUntil(task.catch((error) => console.error(error)));
     },
+    storeLookup: onlineLookup,
     passwordHash: config.APP_PASSWORD_HASH,
     sessionSecret: config.SESSION_SECRET,
     secure,
