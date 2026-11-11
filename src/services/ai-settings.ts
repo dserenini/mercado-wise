@@ -45,7 +45,7 @@ export interface AiChoice {
 
 /** O que a tela mostra: nunca a chave, só os 4 últimos caracteres. */
 export interface AiSettingsView {
-  /** false: banco sem a migration 006; a tela mostra o .env e não deixa salvar */
+  /** false: banco sem a migration 007; a tela mostra o .env e não deixa salvar */
   ready: boolean;
   provider: Provider;
   providers: Record<
@@ -67,13 +67,13 @@ export interface AiSettingsForm {
   clearKey: Record<Provider, boolean>;
 }
 
-/** Postgres "relation does not exist": a migration 006 ainda não rodou. */
+/** Postgres "relation does not exist": a migration 007 ainda não rodou. */
 export const isMissingTable = (error: unknown) =>
   (error as { code?: unknown } | null)?.code === "42P01";
 
 /**
  * Tudo o que foi salvo na tela. null: a tabela ainda não existe (banco sem a
- * migration 006). Aí vale só o .env, exatamente como antes da tela existir.
+ * migration 007). Aí vale só o .env, exatamente como antes da tela existir.
  */
 async function readAll(db: Db): Promise<Map<string, string> | null> {
   try {

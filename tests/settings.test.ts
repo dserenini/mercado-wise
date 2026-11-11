@@ -115,7 +115,7 @@ describe("botão Testar", () => {
   });
 });
 
-describe("banco sem a migration 006 (sem app.settings)", () => {
+describe("banco sem a migration 007 (sem app.settings)", () => {
   beforeEach(async () => {
     await db.exec("drop table app.settings");
   });
