@@ -55,9 +55,16 @@
       <label>Latitude <input name="latitude" value="<%= v("latitude") %>" inputmode="decimal"></label>
       <label>Longitude <input name="longitude" value="<%= v("longitude") %>" inputmode="decimal"></label>
     </div>
-    <% if (hasCoords) { %>
-      <p><a href="https://www.openstreetmap.org/?mlat=<%= s.latitude %>&mlon=<%= s.longitude %>#map=18/<%= s.latitude %>/<%= s.longitude %>" target="_blank" rel="noopener">Ver no mapa ↗</a></p>
-    <% } %>
+    <%# Mapa (MapLibre + OpenFreeMap): mostra a loja; arrastar o marcador ou clicar
+        no mapa preenche latitude e longitude acima (vale ao Salvar). %>
+    <div id="store-map" class="store-map" role="region" aria-label="Mapa do mercado"
+         data-lat="<%= hasCoords ? s.latitude : "" %>" data-lng="<%= hasCoords ? s.longitude : "" %>"></div>
+    <small class="muted">
+      <%= hasCoords ? "Arraste o marcador" : "Clique no mapa" %> para ajustar a posição; depois, Salvar.
+      <% if (hasCoords) { %>
+        <a href="https://www.openstreetmap.org/?mlat=<%= s.latitude %>&mlon=<%= s.longitude %>#map=18/<%= s.latitude %>/<%= s.longitude %>" target="_blank" rel="noopener">Abrir no OpenStreetMap ↗</a>
+      <% } %>
+    </small>
     <button type="submit">Salvar</button>
   </article>
 </form>
@@ -82,4 +89,6 @@
     </li>
   <% } %>
 </ul>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@6.15.0/dist/maplibre-gl.css">
+<script type="module" src="/static/store-map.js?v=<%= assetVersion %>"></script>
 <%- include("partials/bottom") %>
