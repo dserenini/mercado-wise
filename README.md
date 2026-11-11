@@ -35,7 +35,10 @@ Copie `.env.example` para `.env` e preencha:
 - `DATABASE_URL`: Supabase → botão **Connect** → *Transaction pooler* (porta 6543);
 - `APP_PASSWORD_HASH` e `SESSION_SECRET`: gerados por `npm run setup-login`.
 
-Para usar a OpenAI no lugar do Claude: `AI_PROVIDER=openai`, `OPENAI_API_KEY` e
+Para usar a OpenAI no lugar do Claude: tela **Configurações** do app (`/settings`),
+que escolhe a IA e guarda chaves e modelos no banco (chaves cifradas com o
+`SESSION_SECRET`; trocar o segredo exige cadastrar as chaves de novo). Sem nada
+salvo lá, vale o `.env`: `AI_PROVIDER=openai`, `OPENAI_API_KEY` e
 `READER_MODEL`/`INTERPRETER_MODEL` com modelos da OpenAI (visão + raciocínio).
 O adaptador ([src/services/openai.ts](src/services/openai.ts)) faz a OpenAI parecer o
 cliente da Anthropic, então leitor e intérprete não mudam. Os prompts foram

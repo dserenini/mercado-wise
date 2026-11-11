@@ -1,5 +1,5 @@
 import type { Anthropic } from "@anthropic-ai/sdk";
-import OpenAI from "openai";
+import type OpenAI from "openai";
 import type {
   ChatCompletion,
   ChatCompletionContentPart,
@@ -18,14 +18,14 @@ interface OutputFormat {
  * mudam. Cobre só o que eles usam (system em texto, mensagens de texto e imagem em
  * base64, saída estruturada e esforço).
  */
-export function openaiAsClaude(openai = new OpenAI({ maxRetries: 4 })) {
+export function openaiAsClaude(openai: OpenAI) {
   return {
     messages: {
       async parse(params: Params) {
         if (params.model.startsWith("claude")) {
           throw new Error(
             `AI_PROVIDER=openai, mas o modelo é "${params.model}": defina ` +
-              "READER_MODEL e INTERPRETER_MODEL no .env com modelos da OpenAI.",
+              "os modelos da OpenAI em Configurações (ou READER_MODEL e INTERPRETER_MODEL no .env).",
           );
         }
         const { format, effort } = params.output_config;
