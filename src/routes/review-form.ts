@@ -82,6 +82,7 @@ export function parseReviewForm(body: Record<string, unknown>): ReviewForm {
       package_unit: packageUnit as PackageUnit | null,
       category: (category ?? "Outros") as Category,
       confidence: "high",
+      copied: row.copied === "1",
     };
   });
 

@@ -27,6 +27,9 @@ export interface ConfirmedLine {
   product: string | null;
   brand: string | null;
   variant: string | null;
+  /** false: a linha foi confirmada como a tela mostrou (memória, cópia ou marca
+   *  completada na revisão). Ausente: tratada como editada. */
+  edited_by_user?: boolean;
 }
 
 export interface CallUsage {
@@ -116,15 +119,19 @@ export function reportNote(note: NoteInput): NoteReport {
 
     const it = r === null ? null : (note.interpreted?.[r] ?? null);
     if (!it) continue;
-    const bucket = it.source === "memory" ? names.memory : names.ai;
-    bucket.total++;
     const changed = (["product", "brand", "variant"] as const).filter(
       (f) => (it[f] ?? "").trim() !== (conf[f] ?? "").trim(),
     );
-    if (changed.length > 0) {
+    // Nome diferente do da IA, mas o usuário não mexeu: quem preencheu foi o app na
+    // revisão (memória, linha igual da nota, marca completada). Conta como memória.
+    const filledOnReview = changed.length > 0 && conf.edited_by_user === false;
+    const fromMemory = it.source === "memory" || filledOnReview;
+    const bucket = fromMemory ? names.memory : names.ai;
+    bucket.total++;
+    if (changed.length > 0 && !filledOnReview) {
       bucket.edited++;
       names.edits.push(
-        `${label} (${it.source === "memory" ? "memória" : "IA"}): ${describe(it)} → ${describe(conf)}`,
+        `${label} (${fromMemory ? "memória" : "IA"}): ${describe(it)} → ${describe(conf)}`,
       );
     }
   }

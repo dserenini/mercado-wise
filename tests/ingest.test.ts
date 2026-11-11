@@ -112,6 +112,20 @@ describe("processReceipt", () => {
     });
   });
 
+  it("consulta de EAN pula os itens que a memória já conhece", async () => {
+    const { id } = await acceptPhoto(db, await noisePhoto(7));
+    const asked: string[] = [];
+    await processReceipt(db, id, {
+      ...reading(receipt()),
+      lookup: async (ean) => {
+        asked.push(ean);
+        return null;
+      },
+    });
+    expect(asked).toEqual([]);
+    expect((await getReceipt(db, id))?.receipt.status).toBe("draft");
+  });
+
   it("mesma chave de acesso: repetida certa, sem gravar itens", async () => {
     const first = await acceptPhoto(db, await noisePhoto(1));
     await processReceipt(db, first.id, reading(receipt()));

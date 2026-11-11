@@ -5,7 +5,8 @@
   const STATUS = { ok: "✓", warning: "!", error: "✗" };
   // Item que pede atenção abre sozinho na tela.
   const needsLook = (it) =>
-    it.check_status !== "ok" || it.confidence !== "high" || it.product === null;
+    it.check_status !== "ok" || it.confidence !== "high" || it.product === null ||
+    Boolean(it.brand_hint);
 %>
 
 <a href="<%= back %>" class="back-link">← Notas</a>

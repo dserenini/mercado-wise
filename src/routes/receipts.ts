@@ -14,7 +14,7 @@ import {
 } from "../db/receipts-repo.js";
 import { storeNames } from "../db/suggest-repo.js";
 import { KEY_DUPLICATE_REASON } from "../services/ingest.js";
-import { withLineMath, withMemory } from "../services/review.js";
+import { forReview } from "../services/review.js";
 import { filterQuery, groupByMonth, parseListFilter } from "./list-filter.js";
 import { parseReviewForm } from "./review-form.js";
 
@@ -121,7 +121,7 @@ export function receiptRoutes({
       return;
     }
     res.render("review", {
-      ...withLineMath(await withMemory(db, saved)),
+      ...(await forReview(db, saved)),
       stores: await storeNames(db, saved.receipt.store_cnpj),
       back: listUrl(req),
       errors: [],
@@ -148,7 +148,7 @@ export function receiptRoutes({
         return;
       }
       res.status(400).render("review", {
-        ...withLineMath(await withMemory(db, saved)),
+        ...(await forReview(db, saved)),
         stores: await storeNames(db, saved.receipt.store_cnpj),
         back: listUrl(req),
         errors: form.errors,
@@ -160,7 +160,9 @@ export function receiptRoutes({
       res.sendStatus(404);
       return;
     }
-    await confirmReceipt(db, id, form.items, form.header);
+    // Compara com o que a tela mostrou (memória, marcas e contas), não com a leitura.
+    const shown = (await forReview(db, before)).items;
+    await confirmReceipt(db, id, form.items, form.header, shown);
     // De volta à lista (com os filtros de antes), com o aviso do que foi salvo.
     const kind =
       before.receipt.status === "confirmed" ? "corrigida" : "confirmada";

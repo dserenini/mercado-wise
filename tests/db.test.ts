@@ -13,6 +13,7 @@ import {
   saveDraft,
 } from "../src/db/receipts-repo.js";
 import type { ItemRead, ReceiptRead } from "../src/schemas/receipt.js";
+import { withMemory } from "../src/services/review.js";
 import { validateReceipt } from "../src/services/validators.js";
 import { testDb } from "./helpers/db.js";
 import {
@@ -209,6 +210,53 @@ describe("confirmReceipt + memória", () => {
         { name: null, cnpj: VALID_CNPJ },
       ),
     ).toMatchObject({ product: "Limão" });
+  });
+
+  it("o que a memória preencheu na revisão e o usuário aceitou conta como memória", async () => {
+    const first = await saveDraft(db, draft());
+    await confirmReceipt(db, first, [confirmed(item()), limaoConfirmed()]);
+
+    // Segunda nota lida antes da primeira ser confirmada: a memória entra na revisão.
+    const second = await saveDraft(
+      db,
+      draft(
+        receipt({
+          access_key: null,
+          items: [item(), limao],
+          items_count: 2,
+          total: 5.53,
+        }),
+      ),
+    );
+    const saved = await getReceipt(db, second);
+    if (!saved) throw new Error("rascunho sumiu");
+    const shown = (await withMemory(db, saved)).items;
+    expect(shown[0]?.interpretation_source).toBe("memory");
+
+    await confirmReceipt(
+      db,
+      second,
+      [confirmed(item()), limaoConfirmed()],
+      undefined,
+      shown,
+    );
+    const after = await getReceipt(db, second);
+    expect(after?.items.map((i) => i.edited_by_user)).toEqual([false, false]);
+    expect(after?.items.map((i) => i.interpretation_source)).toEqual([
+      "memory",
+      "memory",
+    ]);
+  });
+
+  it("linha copiada de outra igual da nota não conta como digitada", async () => {
+    const id = await saveDraft(db, draft());
+    await confirmReceipt(db, id, [
+      confirmed(item()),
+      { ...limaoConfirmed(), copied: true },
+    ]);
+    const saved = await getReceipt(db, id);
+    expect(saved?.items.map((i) => i.edited_by_user)).toEqual([true, false]);
+    expect(saved?.items[1]?.interpretation_source).toBe("memory");
   });
 
   it("a última confirmação vence (correção vale para as próximas notas)", async () => {

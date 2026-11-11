@@ -118,6 +118,24 @@ describe("reportNote", () => {
     expect(r.names.ai.total).toBe(0);
   });
 
+  it("nome preenchido na revisão (memória) e aceito sem mexer conta como memória", () => {
+    const r = reportNote(
+      note({
+        confirmed: [line({ variant: "Ultra", edited_by_user: false })],
+      }),
+    );
+    expect(r.names.memory).toEqual({ total: 1, edited: 0 });
+    expect(r.names.ai).toEqual({ total: 0, edited: 0 });
+    expect(r.names.edits).toEqual([]);
+  });
+
+  it("nome corrigido pelo usuário continua contando contra a IA", () => {
+    const r = reportNote(
+      note({ confirmed: [line({ variant: "Ultra", edited_by_user: true })] }),
+    );
+    expect(r.names.ai).toEqual({ total: 1, edited: 1 });
+  });
+
   it("linha que a leitura pulou conta como errada", () => {
     const r = reportNote(
       note({ confirmed: [line(), line({ raw_description: "PAO FRANCES" })] }),
