@@ -65,3 +65,9 @@ Nunca faça push direto na `main`.
 ## Segredos
 
 - `.env` nunca entra no git. Valores novos vão vazios em `.env.example`.
+
+## Testes
+
+- `testDb()` devolve o **mesmo banco** para todos os testes do arquivo, zerado a cada
+  chamada (é o que deixa o CI rápido). Teste que muda a estrutura do banco (`drop`,
+  `alter`) usa `freshDb()`, senão quebra os testes seguintes.

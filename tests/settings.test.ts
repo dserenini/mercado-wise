@@ -9,7 +9,7 @@ import {
   encrypt,
   resolveAi,
 } from "../src/services/ai-settings.js";
-import { testDb } from "./helpers/db.js";
+import { freshDb, testDb } from "./helpers/db.js";
 
 const SECRET = "s".repeat(32);
 let db: Db;
@@ -120,6 +120,7 @@ describe("botão Testar", () => {
 
 describe("banco sem a migration 007 (sem app.settings)", () => {
   beforeEach(async () => {
+    db = await freshDb(); // muda a estrutura: não pode ser o banco compartilhado
     await db.exec("drop table app.settings");
   });
 
