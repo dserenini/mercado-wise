@@ -195,7 +195,6 @@ describe("preços nas notas", () => {
       createApp({
         db,
         accept: async () => ({ kind: "queued", id: 1 }),
-        acceptPage: async () => ({ kind: "error" as const, message: "" }),
 
         process: async () => {},
         background: () => {},

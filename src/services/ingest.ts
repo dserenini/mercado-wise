@@ -15,12 +15,7 @@ import {
   photoHashes,
   type ReceiptStatus,
 } from "../db/receipts-repo.js";
-import {
-  addQrToReceipt,
-  createFromPage,
-  getReceiptSource,
-} from "../db/sources-repo.js";
-import { isMissingTable, resolveAi } from "./ai-settings.js";
+import { resolveAi } from "./ai-settings.js";
 import { aiClient } from "./claude.js";
 import {
   hashDistance,
@@ -29,15 +24,9 @@ import {
   prepareImage,
 } from "./image.js";
 import type { InterpretationMemory } from "./interpreter.js";
-import { cnpjFromKey, MAX_PAGE_TEXT, pageHasKey, parseNfceQr } from "./nfce.js";
 import type { OffFetch } from "./off.js";
 import { completeReading } from "./pipeline.js";
-import {
-  ReadError,
-  type ReadResult,
-  readReceipt,
-  readReceiptPage,
-} from "./reader.js";
+import { ReadError, type ReadResult, readReceipt } from "./reader.js";
 import { enrichReceiptStore, type StoreLookup } from "./stores.js";
 import { isManufacturerEan } from "./validators.js";
 
@@ -61,16 +50,11 @@ export type AcceptResult =
   | { kind: "queued"; id: number }
   | { kind: "same-photo"; id: number; status: ReceiptStatus };
 
-/**
- * Sem userId (scripts), a nota fica com o dono padrão (o primeiro usuário). Com o
- * endereço do QR Code (lido na tela antes da foto), a chave exata dele corrige a da
- * leitura e dá o CNPJ.
- */
+/** Sem userId (scripts), a nota fica com o dono padrão (o primeiro usuário). */
 export async function acceptPhoto(
   db: Db,
   photo: Buffer,
   userId?: number,
-  qrUrl?: string,
 ): Promise<AcceptResult> {
   const image = await prepareImage(photo);
   const hash = await imageHash(image.data);
@@ -78,59 +62,12 @@ export async function acceptPhoto(
     (p) => hashDistance(p.hash, hash) <= SAME_PHOTO_MAX_DISTANCE,
   );
   if (same) return { kind: "same-photo", id: same.id, status: same.status };
-  const id = await createPending(db, image, hash, userId);
-  const qr = qrUrl ? parseNfceQr(qrUrl) : null;
-  if (qr && !("error" in qr)) await addQrToReceipt(db, id, qr);
-  return { kind: "queued", id };
-}
-
-export type PageAcceptResult =
-  | { kind: "queued"; id: number }
-  | { kind: "duplicate"; id: number; status: ReceiptStatus }
-  | { kind: "error"; message: string };
-
-/**
- * Nota pelo QR Code: o endereço lido e o texto que a pessoa copiou da página da
- * SEFAZ. Confere que o texto é da nota do QR e cria a nota "lendo…" (a leitura pela
- * IA roda depois, em processReceipt, a partir do texto).
- */
-export async function acceptPage(
-  db: Db,
-  qrUrl: string,
-  pageText: string,
-  userId: number,
-): Promise<PageAcceptResult> {
-  const qr = parseNfceQr(qrUrl);
-  if ("error" in qr) return { kind: "error", message: qr.error };
-  const text = pageText.trim();
-  if (text.length > MAX_PAGE_TEXT)
-    return { kind: "error", message: "Texto colado longo demais." };
-  if (!pageHasKey(text, qr.accessKey))
-    return {
-      kind: "error",
-      message:
-        "O texto colado não é da nota do QR Code (não traz a chave de acesso dela).",
-    };
-  const existing = await findReceiptByAccessKey(db, qr.accessKey);
-  if (existing)
-    return { kind: "duplicate", id: existing.id, status: existing.status };
-  try {
-    return { kind: "queued", id: await createFromPage(db, qr, text, userId) };
-  } catch (error) {
-    if (!isMissingTable(error)) throw error;
-    return {
-      kind: "error",
-      message:
-        "Leitura pelo QR Code ainda não disponível (falta atualizar o banco).",
-    };
-  }
+  return { kind: "queued", id: await createPending(db, image, hash, userId) };
 }
 
 export interface ProcessOptions {
   /** nos testes, uma leitura falsa; padrão: a IA */
   read?: (image: PreparedImage) => Promise<ReadResult>;
-  /** idem, para a leitura pelo texto da página da SEFAZ (QR Code) */
-  readPage?: (pageText: string) => Promise<ReadResult>;
   memory?: InterpretationMemory;
   /** espera pela vez de ler (padrão: 5 s entre tentativas, até 3 min: somada à
    *  leitura, cabe nos 5 min que a Vercel dá para cada envio) */
@@ -149,12 +86,8 @@ export async function processReceipt(
 ): Promise<void> {
   try {
     await waitForSlot(db, id, options);
-    // Texto da página da SEFAZ (QR Code) vale mais que a foto; sem nenhum dos dois,
-    // não há o que ler.
-    const source = await getReceiptSource(db, id);
     const image = await getReceiptImage(db, id);
-    if (!source?.page_text && !image)
-      throw new Error("A foto da nota não foi encontrada.");
+    if (!image) throw new Error("A foto da nota não foi encontrada.");
 
     // A IA escolhida em Configurações (ou no .env), lida a cada nota.
     const ai = await resolveAi(db);
@@ -162,19 +95,10 @@ export async function processReceipt(
       throw new ReadError("Sem chave da OpenAI: cadastre em Configurações.");
     }
     const client = aiClient(ai.provider, ai.apiKey);
-    const readOptions = { client, model: ai.readerModel };
-    const read = source?.page_text
-      ? await (options.readPage ?? ((t) => readReceiptPage(t, readOptions)))(
-          source.page_text,
-        )
-      : await (options.read ?? ((img) => readReceipt(img, readOptions)))(
-          image as PreparedImage,
-        );
-    // A chave do QR é exata: corrige a da leitura, e o CNPJ sai de dentro dela.
-    if (source) {
-      read.receipt.access_key = source.access_key;
-      read.receipt.store.cnpj = cnpjFromKey(source.access_key);
-    }
+    const read = await (
+      options.read ??
+      ((img) => readReceipt(img, { client, model: ai.readerModel }))
+    )(image);
 
     // Camada 2: a chave de acesso é única por nota fiscal.
     const key = read.receipt.access_key;

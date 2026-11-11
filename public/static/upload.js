@@ -42,10 +42,6 @@ async function send(file) {
     // Se o navegador não conseguir decodificar a imagem, vai a original.
     const photo = await shrink(file).catch(() => file);
     const body = new FormData();
-    // QR Code lido antes (qr-scan.js): vai antes da foto, para o servidor já ter o
-    // campo quando recebe o arquivo.
-    const qrUrl = form.elements.namedItem("qr_url")?.value;
-    if (qrUrl) body.append("qr_url", qrUrl);
     body.append("photo", photo, "nota.jpg");
     const res = await fetch(form.action, {
       method: "POST",
