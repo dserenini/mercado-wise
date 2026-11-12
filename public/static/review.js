@@ -161,8 +161,11 @@ items.addEventListener("click", (event) => {
     ].length;
     document.querySelector("[data-to-fix-count]").textContent = left;
   }
-  item.open = false;
-  item.scrollIntoView({ block: "nearest" });
+  window.animateOpen(item, false);
+  item.querySelector("summary").scrollIntoView({
+    block: "nearest",
+    behavior: "smooth",
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -1119,3 +1119,142 @@ details.filters[open] > summary {
 .user-menu[open] > summary {
   margin-bottom: 0;
 }
+
+/* ------------------------------------------------------------------------- */
+/* Movimento. Abrir/fechar <details> e o carregando ficam em motion.js.       */
+
+/* Troca de página: a nova sobe e aparece; topo, abas e botão de enviar ficam
+   parados (Safari 18.2+ e Chrome 126+; nos outros, troca sem animação). */
+@view-transition {
+  navigation: auto;
+}
+.topbar {
+  view-transition-name: topbar;
+}
+.tabs {
+  view-transition-name: tabs;
+}
+.send-button {
+  view-transition-name: send;
+}
+::view-transition-old(root) {
+  animation: 120ms ease-out both mw-fade-out;
+}
+::view-transition-new(root) {
+  animation: 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both mw-rise;
+}
+@keyframes mw-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes mw-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+}
+
+/* Toque: o botão afunda, a linha escurece. */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+button,
+[role="button"],
+.tabs a,
+summary {
+  transition:
+    scale 120ms ease,
+    background-color var(--pico-transition),
+    border-color var(--pico-transition),
+    color var(--pico-transition),
+    box-shadow var(--pico-transition);
+}
+button:active,
+[role="button"]:active,
+.tabs a:active,
+details.more-fields > summary:active,
+details.filters > summary:active {
+  scale: 0.96;
+}
+.row-link,
+details.item > summary,
+.receipt-row article {
+  transition: background-color 150ms ease;
+}
+.row-link:active,
+details.item > summary:active,
+.receipt-row:active article {
+  background-color: color-mix(in srgb, var(--pico-color) 8%, transparent);
+}
+
+/* Menus suspensos surgem do ponto tocado. */
+.user-menu[open] .menu,
+details.dropdown[open] > ul {
+  animation: 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both mw-pop;
+}
+.user-menu .menu {
+  transform-origin: top right;
+}
+details.dropdown > ul {
+  transform-origin: top left;
+}
+@keyframes mw-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-0.25rem);
+  }
+}
+
+/* Item que ficou certo na revisão: a cor da borda muda devagar. */
+details.item {
+  transition: border-color 400ms ease;
+}
+
+/* Fotos escolhidas no envio entram aparecendo. */
+.thumbs figure {
+  animation: 200ms ease-out both mw-pop;
+}
+
+/* Carregando: barra no topo depois de 150 ms (página rápida não pisca). */
+html.loading body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: 3px;
+  z-index: 1000;
+  background: var(--pico-primary);
+  transform-origin: left;
+  animation: 8s cubic-bezier(0.1, 0.7, 0.2, 1) 150ms both mw-load;
+}
+@keyframes mw-load {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(0.9);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @view-transition {
+    navigation: none;
+  }
+  *,
+  ::before,
+  ::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  html.loading body::before {
+    transform: scaleX(0.6);
+  }
+}
+
+/* Lista de notas buscando com outro filtro: esmaece até chegar a nova. */
+#results {
+  transition: opacity 150ms ease;
+}
+#results.updating {
+  opacity: 0.5;
+}

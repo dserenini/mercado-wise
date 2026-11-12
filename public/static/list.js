@@ -55,8 +55,10 @@ async function apply() {
   history.replaceState(null, "", url);
   pending?.abort();
   pending = new AbortController();
+  const { signal } = pending;
+  results.classList.add("updating");
   try {
-    const res = await fetch(url, { signal: pending.signal });
+    const res = await fetch(url, { signal });
     if (!res.ok) return;
     const page = new DOMParser().parseFromString(await res.text(), "text/html");
     const fresh = page.getElementById("results");
@@ -66,6 +68,8 @@ async function apply() {
       page.querySelector("[data-filter-count]").textContent;
   } catch {
     // abortada por uma busca mais nova, ou sem rede: a lista fica como estava
+  } finally {
+    if (pending.signal === signal) results.classList.remove("updating");
   }
 }
 
