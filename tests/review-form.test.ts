@@ -100,3 +100,30 @@ describe("parseReviewForm", () => {
     expect(form.ok).toBe(false);
   });
 });
+
+describe("ordem dos itens", () => {
+  it("salva na ordem da nota mesmo com itens do topo vindo antes no formulário", async () => {
+    const qs = await import("qs");
+    // A tela manda primeiro os itens de "Faltou informação" (4 e 22), depois os demais.
+    const order = [
+      4,
+      22,
+      ...Array.from({ length: 25 }, (_, i) => i).filter(
+        (i) => i !== 4 && i !== 22,
+      ),
+    ];
+    const encoded = [
+      "store_name=X&total=1,54",
+      ...order.map(
+        (i) =>
+          `items[${i}][raw_description]=I${i}&items[${i}][product]=P&items[${i}][category]=Outros`,
+      ),
+    ].join("&");
+    const form = parseReviewForm(qs.parse(encoded, { parameterLimit: 10_000 }));
+    expect(form.ok).toBe(true);
+    if (!form.ok) return;
+    expect(form.items.map((i) => i.raw_description)).toEqual(
+      Array.from({ length: 25 }, (_, i) => `I${i}`),
+    );
+  });
+});

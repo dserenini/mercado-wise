@@ -85,15 +85,85 @@ items.addEventListener("click", (event) => {
   recalc();
 });
 
-// Campo obrigatório dentro de item fechado: abre o item para o navegador mostrar o erro.
+// Campo obrigatório dentro de item (ou de "Mais campos") fechado: abre tudo em volta
+// para o navegador mostrar o erro.
 form.addEventListener(
   "invalid",
   (event) => {
-    const item = event.target.closest("details");
-    if (item) item.open = true;
+    for (let d = event.target.closest("details"); d; ) {
+      d.open = true;
+      d = d.parentElement.closest("details");
+    }
   },
   true,
 );
+
+// Conta que falta: com quantidade e preço, completa o total vazio; com quantidade e
+// total, completa o preço vazio.
+items.addEventListener("change", (event) => {
+  if (!event.target.matches("[data-qty], [data-price], [data-line-total]"))
+    return;
+  const item = event.target.closest("[data-item]");
+  const [qty, price, total] = [
+    "[data-qty]",
+    "[data-price]",
+    "[data-line-total]",
+  ].map((sel) => item.querySelector(sel));
+  const q = parse(qty.value);
+  if (!q) return;
+  const money = (c) => (c / 100).toFixed(2).replace(".", ",");
+  if (cents(price.value) !== null && total.value.trim() === "")
+    total.value = money(Math.round(q * cents(price.value)));
+  else if (cents(total.value) !== null && price.value.trim() === "")
+    price.value = money(Math.round(cents(total.value) / q));
+  recalc();
+});
+
+// "Pronto": fecha o item e atualiza o resumo. Item do topo ("Faltou informação")
+// que ficou com produto, quantidade, preço e total vira ✓. A nota é salva no fim,
+// em "Confirmar nota".
+items.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-done]");
+  if (!button) return;
+  const item = button.closest("[data-item]");
+  const field = (sel) => item.querySelector(sel).value.trim();
+  const qty = field("[data-qty]");
+  const total = cents(field("[data-line-total]"));
+  item.querySelector(".item-total").innerHTML = "";
+  item.querySelector(".item-total").append(
+    Object.assign(document.createElement("small"), {
+      textContent: `${qty || "?"} × `,
+    }),
+    total === null ? "?" : brl(total),
+  );
+  const product = field('[data-fill="product"]');
+  const brand = field('[data-fill="brand"]');
+  const variant = field('[data-fill="variant"]');
+  if (product)
+    item.querySelector(".item-title strong").textContent = [
+      product,
+      brand,
+      variant,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  const complete =
+    product &&
+    parse(qty) !== null &&
+    cents(field("[data-price]")) !== null &&
+    total !== null;
+  if (complete && item.closest("[data-to-fix]")) {
+    item.classList.remove("status-warning", "status-error", "status-none");
+    item.classList.add("status-ok");
+    item.querySelector(".item-status").textContent = "✓";
+    const left = [
+      ...document.querySelectorAll("[data-to-fix] [data-item]:not(.status-ok)"),
+    ].length;
+    document.querySelector("[data-to-fix-count]").textContent = left;
+  }
+  item.open = false;
+  item.scrollIntoView({ block: "nearest" });
+});
 
 // ---------------------------------------------------------------------------
 // Sugestões da memória. "Na nota": a lista vem do que já foi confirmado; escolher

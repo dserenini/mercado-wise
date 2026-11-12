@@ -448,6 +448,43 @@ details.item > summary::after {
 .line-mismatch {
   border-left-color: var(--mw-bad);
 }
+/* Ícone colorido: dá para ver o problema com o item fechado. */
+.status-ok > summary .item-status {
+  color: var(--mw-ok);
+}
+.status-warning > summary .item-status {
+  color: #1a1a1a;
+  background: var(--mw-warn);
+  border-radius: 50%;
+}
+.status-error > summary .item-status {
+  color: #fff;
+  background: var(--mw-bad);
+  border-radius: 50%;
+}
+.to-fix {
+  border: 2px solid var(--mw-warn);
+  border-radius: var(--pico-border-radius);
+  padding: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+.to-fix h2,
+.items-heading {
+  font-size: 1.1rem;
+  margin-bottom: 0.4rem;
+}
+details.more-fields {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+}
+details.more-fields > summary {
+  color: var(--pico-muted-color);
+}
+details.item .item-done {
+  width: 100%;
+  margin: 0.4rem 0 0.2rem;
+  padding: 0.35rem;
+}
 .line-mismatch [data-line-total] {
   border-color: var(--mw-bad);
 }
@@ -528,6 +565,9 @@ details.item .fields .suggested {
 }
 .d-6 {
   grid-column: span 6;
+}
+.d-8 {
+  grid-column: span 8;
 }
 @media (max-width: 576px) {
   .fields {

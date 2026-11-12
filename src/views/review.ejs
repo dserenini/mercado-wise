@@ -3,10 +3,12 @@
   const r = receipt;
   const SOURCE = { memory: "memória", ai: "IA", user: "você" };
   const STATUS = { ok: "✓", warning: "!", error: "✗" };
-  // Item que pede atenção abre sozinho na tela.
-  const needsLook = (it) =>
-    it.check_status !== "ok" || it.confidence !== "high" || it.product === null ||
-    Boolean(it.brand_hint);
+  // Faltou o básico (produto ou preço): vai para o topo, para corrigir primeiro. Os
+  // itens começam fechados; a cor e o ícone mostram quem tem problema.
+  const missing = (it) =>
+    it.product === null || it.quantity === null || it.unit_price_cents === null ||
+    it.total_price_cents === null;
+  const toFix = items.map((it, i) => [it, i]).filter(([it]) => missing(it));
 %>
 
 <a href="<%= back %>" class="back-link">← Notas</a>
@@ -90,10 +92,22 @@
     <button type="button" class="secondary outline" data-open-all="">Recolher todos</button>
   </div>
 
+  <%# A ordem salva vem da chave (items[i]), não da posição na tela: os itens do
+      topo voltam ao lugar deles na nota ao salvar. %>
   <div id="items">
-    <% items.forEach((it, i) => { %>
-      <%- include("partials/item", { key: i, it, open: needsLook(it), SOURCE, STATUS }) %>
-    <% }) %>
+    <% if (toFix.length > 0) { %>
+      <section class="to-fix" data-to-fix>
+        <h2>Faltou informação (<span data-to-fix-count><%= toFix.length %></span>)</h2>
+        <p class="muted"><small>A leitura não achou o preço ou o produto destes itens. Confira na foto e preencha.</small></p>
+        <% for (const [it, i] of toFix) { %>
+          <%- include("partials/item", { key: i, it, open: false, SOURCE, STATUS }) %>
+        <% } %>
+      </section>
+      <h2 class="items-heading">Itens da nota</h2>
+    <% } %>
+    <% items.forEach((it, i) => { if (!missing(it)) { %>
+      <%- include("partials/item", { key: i, it, open: false, SOURCE, STATUS }) %>
+    <% } }) %>
   </div>
 
   <template id="new-item">
