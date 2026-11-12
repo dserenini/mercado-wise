@@ -27,7 +27,7 @@
   </div>
 <% } %>
 
-<details class="filters" <%= active > 0 ? "open" : "" %>>
+<details class="filters">
   <summary>Filtros<span data-filter-count><%= active > 0 ? ` (${active})` : "" %></span></summary>
   <%# Aplicado ao vivo pelo list.js; sem JavaScript, Enter envia o formulário. %>
   <form method="get" action="/" id="filter-form"

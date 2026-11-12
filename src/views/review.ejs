@@ -11,20 +11,20 @@
   const toFix = items.map((it, i) => [it, i]).filter(([it]) => missing(it));
 %>
 
-<a href="<%= back %>" class="back-link">← Notas</a>
-
-<hgroup>
+<%# Topo compacto: o conteúdo (itens) começa logo. %>
+<div class="page-title">
+  <a href="<%= back %>" class="back-link" aria-label="Voltar para as notas">←</a>
   <h1><%= r.store_name || "Mercado não identificado" %></h1>
-  <p class="owner-line"><%- include("partials/owner", { receipt: r }) %>
-    <% if (r.source === "qrcode") { %><small class="muted">· lida pela página oficial da SEFAZ (QR Code)</small><% } %></p>
-  <p>
-    <% if (r.status !== "confirmed") { %>
-      Revise e confirme. <%- include("partials/light", { light: r.traffic_light }) %>
-    <% } else { %>
-      Nota confirmada<%= r.confirmed_at ? " em " + r.confirmed_at.toLocaleDateString("pt-BR") : "" %>. Você pode corrigir e salvar de novo.
-    <% } %>
-  </p>
-</hgroup>
+</div>
+<p class="review-status">
+  <%- include("partials/owner", { receipt: r }) %>
+  <% if (r.status !== "confirmed") { %>
+    <%- include("partials/light", { light: r.traffic_light }) %>
+  <% } else { %>
+    <span class="badge done">confirmada<%= r.confirmed_at ? " em " + r.confirmed_at.toLocaleDateString("pt-BR") : "" %></span>
+  <% } %>
+  <% if (r.source === "qrcode") { %><small class="muted">· lida pela página da SEFAZ</small><% } %>
+</p>
 
 <% if (r.status === "duplicate") { %>
   <div class="duplicate-box">
@@ -56,32 +56,33 @@
 <% } %>
 
 <form method="post" action="/receipts/<%= r.id %>/confirm" id="review-form" data-cnpj="<%= r.store_cnpj || "" %>">
-  <article>
-    <div class="grid">
-      <label>Mercado
+  <article class="receipt-head">
+    <div class="head-grid">
+      <label>Data
+        <input type="date" name="purchase_date" value="<%= r.purchase_date || "" %>">
+      </label>
+      <label>Total (R$)
+        <input name="total" inputmode="decimal" value="<%= centsToInput(r.total_cents) %>" data-total>
+      </label>
+      <label class="wide">Mercado
         <input name="store_name" value="<%= r.store_name || "" %>" list="stores" autocomplete="off">
         <datalist id="stores">
           <% for (const name of stores) { %><option value="<%= name %>"></option><% } %>
         </datalist>
       </label>
-      <label>Data
-        <input type="date" name="purchase_date" value="<%= r.purchase_date || "" %>">
-      </label>
     </div>
-    <div class="grid">
-      <label>Total da nota (R$)
-        <input name="total" inputmode="decimal" value="<%= centsToInput(r.total_cents) %>" data-total>
-      </label>
+    <details class="more-fields">
+      <summary>Pagamento, CNPJ e chave</summary>
       <label>Pagamento
         <input name="payment_method" value="<%= r.payment_method || "" %>">
       </label>
-    </div>
-    <small class="muted">
-      CNPJ <%= r.store_cnpj || "—" %>
-      <% if (/^\d{14}$/.test(r.store_cnpj || "")) { %> · <a href="/stores/<%= r.store_cnpj %>">ver mercado</a><% } %>
-      <% if (r.purchase_time) { %> · <%= r.purchase_time %><% } %>
-      <% if (r.access_key) { %><br>Chave <%= r.access_key.replace(/(\d{4})/g, "$1 ").trim() %><% } %>
-    </small>
+      <small class="muted">
+        CNPJ <%= r.store_cnpj || "—" %>
+        <% if (/^\d{14}$/.test(r.store_cnpj || "")) { %> · <a href="/stores/<%= r.store_cnpj %>">ver mercado</a><% } %>
+        <% if (r.purchase_time) { %> · <%= r.purchase_time %><% } %>
+        <% if (r.access_key) { %><br>Chave <%= r.access_key.replace(/(\d{4})/g, "$1 ").trim() %><% } %>
+      </small>
+    </details>
   </article>
 
   <%# Sugestões do campo "Na nota", preenchidas pelo review.js conforme a digitação. %>
@@ -119,7 +120,7 @@
   <%# Desconto que a nota traz só no total (a página da SEFAZ não detalha por item):
       entra na soma, além dos descontos dos itens. %>
   <div class="totals-bar" id="totals" aria-live="polite" data-discount-total="<%= r.discount_total_cents || 0 %>">
-    <span data-extra-wrap hidden>Desconto no total <strong data-extra>—</strong></span>
+    <span data-extra-wrap hidden>Desconto <strong data-extra>—</strong></span>
     <span>Soma <strong data-sum>—</strong></span>
     <span>Nota <strong data-printed>—</strong></span>
     <span data-diff-wrap>Diferença <strong data-diff>—</strong></span>

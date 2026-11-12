@@ -1,7 +1,10 @@
 <%- include("partials/top", { title: `Nota #${receipt.id}` }) %>
 <%# Nota que ainda não tem revisão: lendo, leitura que falhou ou repetida pela chave. %>
 <% const r = receipt; %>
-<a href="<%= back %>" class="back-link">← Notas</a>
+<div class="page-title">
+  <a href="<%= back %>" class="back-link" aria-label="Voltar para as notas">←</a>
+  <h1>Nota #<%= r.id %></h1>
+</div>
 
 <article class="narrow">
   <p class="owner-line"><%- include("partials/owner", { receipt: r }) %></p>

@@ -134,11 +134,11 @@ mainInput.addEventListener("change", () => {
   document.getElementById("main-thumb").replaceChildren(
     thumb(file, () => {
       main = null;
-      sendButton.disabled = true;
+      sendButton.hidden = true;
     }),
   );
   closeButton.hidden = false;
-  sendButton.disabled = false;
+  sendButton.hidden = false;
 });
 
 closeInput.addEventListener("change", () => {

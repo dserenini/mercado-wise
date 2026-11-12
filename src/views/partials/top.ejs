@@ -2,32 +2,62 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#13171f">
   <title><%= typeof title !== "undefined" ? title + " · " : "" %>mercado-wise</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/pico.min.css">
   <link rel="stylesheet" href="/static/app.css?v=<%= assetVersion %>">
 </head>
 <body>
-  <% if (typeof hideNav === "undefined" || !hideNav) { %>
-  <header class="container">
-    <nav>
-      <ul><li><a href="/" class="brand"><strong>mercado-wise</strong></a></li></ul>
-      <ul>
-        <li><a href="/receipts/new" role="button">Enviar nota</a></li>
-        <li><a href="/products">Produtos</a></li>
-        <li><a href="/stores">Mercados</a></li>
-        <li><a href="/settings">Configurações</a></li>
-        <% if (typeof currentUser !== "undefined") { %>
-          <li class="muted" title="Entrou como <%= currentUser.username %>"><%= currentUser.username %></li>
-        <% } %>
-        <li>
-          <form method="post" action="/logout" class="inline">
+  <% if (typeof hideNav === "undefined" || !hideNav) {
+    const here = typeof path === "string" ? path : "";
+    const tab = here.startsWith("/products") ? "products"
+      : here.startsWith("/stores") ? "stores"
+      : here === "/receipts/new" ? "new"
+      : here === "/" || here.startsWith("/receipts") ? "receipts" : "";
+    const current = (t) => (tab === t ? 'aria-current="page"' : "");
+    // A ação principal fica nas listas; nas telas de detalhe e no próprio envio ela
+    // cobriria botões da página.
+    const showSend = ["/", "/products", "/stores"].includes(here);
+    const user = typeof currentUser !== "undefined" ? currentUser : null;
+  %>
+  <header class="topbar">
+    <a href="/" class="brand"><%- include("logo") %><span>mercado-wise</span></a>
+    <%# No celular, as abas ficam fixas embaixo (alcance do polegar); no computador, aqui no topo. %>
+    <nav class="tabs" aria-label="Seções">
+      <a href="/" <%- current("receipts") %>>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18l2-1.2 2 1.2 2-1.2 2 1.2 2-1.2 2 1.2 2-1.2V3l-2 1.2L15 3l-2 1.2L11 3 9 4.2 7 3 5 4.2Z"/><path d="M9 9h6M9 13h6"/></svg>
+        <span>Notas</span>
+      </a>
+      <a href="/products" <%- current("products") %>>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9Z"/><circle cx="7.5" cy="7.5" r="1.2"/></svg>
+        <span>Produtos</span>
+      </a>
+      <a href="/stores" <%- current("stores") %>>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9 5.5 4h13L20 9M5 9v11h14V9M10 20v-5h4v5M4 9h16"/></svg>
+        <span>Mercados</span>
+      </a>
+    </nav>
+    <% if (showSend) { %>
+      <a href="/receipts/new" class="send-button" role="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        Enviar nota
+      </a>
+    <% } %>
+    <% if (user) { %>
+      <details class="user-menu">
+        <summary aria-label="Conta: <%= user.username %>"><span class="avatar"><%= user.username.slice(0, 1).toUpperCase() %></span></summary>
+        <div class="menu">
+          <p class="muted">Entrou como <strong><%= user.username %></strong></p>
+          <a href="/settings">Configurações</a>
+          <form method="post" action="/logout">
             <button type="submit" class="secondary outline">Sair</button>
           </form>
-        </li>
-      </ul>
-    </nav>
+        </div>
+      </details>
+    <% } %>
   </header>
   <% } %>
   <main class="container">
