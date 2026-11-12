@@ -1,3 +1,10 @@
   </main>
+  <script>
+    // Menu do avatar: fecha ao tocar fora dele.
+    document.addEventListener("click", (event) => {
+      const menu = document.querySelector(".user-menu[open]");
+      if (menu && !menu.contains(event.target)) menu.open = false;
+    });
+  </script>
 </body>
 </html>

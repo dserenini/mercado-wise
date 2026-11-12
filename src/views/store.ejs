@@ -7,12 +7,11 @@
   const STATUS = { draft: "rascunho", confirmed: "confirmada", duplicate: "repetida?", processing: "lendo…", failed: "falhou" };
   const hasCoords = s.latitude !== null && s.longitude !== null;
 %>
-<a href="/stores" class="back-link">← Mercados</a>
-
-<hgroup>
+<div class="page-title">
+  <a href="/stores" class="back-link" aria-label="Voltar para mercados">←</a>
   <h1><%= s.name %></h1>
-  <p>CNPJ <%= cnpj %><% if (s.legal_name) { %> · <%= s.legal_name %><% } %></p>
-</hgroup>
+</div>
+<p class="muted page-sub"><small>CNPJ <%= cnpj %><% if (s.legal_name) { %> · <%= s.legal_name %><% } %></small></p>
 
 <% if (flash) { %><p class="flash" role="status"><%= flash %></p><% } %>
 <% if (errors.length > 0) { %>
@@ -31,8 +30,20 @@
   <div><strong><%= date(s.last_purchase) %></strong><small>última compra</small></div>
 </section>
 
+<%# Conteúdo primeiro (mapa e notas); a edição dos dados fica recolhida. %>
 <form method="post" action="/stores/<%= s.cnpj %>">
-  <article>
+  <%# Mapa (MapLibre + OpenFreeMap): mostra a loja; arrastar o marcador ou tocar no
+      mapa preenche latitude e longitude (vale ao Salvar). %>
+  <div id="store-map" class="store-map" role="region" aria-label="Mapa do mercado"
+       data-lat="<%= hasCoords ? s.latitude : "" %>" data-lng="<%= hasCoords ? s.longitude : "" %>"></div>
+  <small class="muted">
+    <%= hasCoords ? "Arraste o marcador" : "Toque no mapa" %> para ajustar a posição; depois, Salvar.
+    <% if (hasCoords) { %>
+      <a href="https://www.openstreetmap.org/?mlat=<%= s.latitude %>&mlon=<%= s.longitude %>#map=18/<%= s.latitude %>/<%= s.longitude %>" target="_blank" rel="noopener">Abrir no OpenStreetMap ↗</a>
+    <% } %>
+  </small>
+  <details class="more-fields" <%= errors.length > 0 ? "open" : "" %>>
+    <summary>Editar dados do mercado</summary>
     <label>Nome
       <input name="name" value="<%= v("name") %>" required maxlength="150">
     </label>
@@ -42,36 +53,23 @@
     <label>Endereço
       <input name="address" value="<%= v("address") %>" maxlength="300">
     </label>
-    <div class="grid">
+    <div class="head-grid">
       <label>Bairro <input name="district" value="<%= v("district") %>" maxlength="100"></label>
       <label>CEP <input name="postal_code" value="<%= v("postal_code") %>" inputmode="numeric" maxlength="12"></label>
-    </div>
-    <div class="grid">
       <label>Cidade <input name="city" value="<%= v("city") %>" maxlength="100"></label>
       <label>Estado <input name="state" value="<%= v("state") %>" maxlength="40"></label>
       <label>País <input name="country" value="<%= v("country") %>" maxlength="60"></label>
-    </div>
-    <div class="grid">
+      <span></span>
       <label>Latitude <input name="latitude" value="<%= v("latitude") %>" inputmode="decimal"></label>
       <label>Longitude <input name="longitude" value="<%= v("longitude") %>" inputmode="decimal"></label>
     </div>
-    <%# Mapa (MapLibre + OpenFreeMap): mostra a loja; arrastar o marcador ou clicar
-        no mapa preenche latitude e longitude acima (vale ao Salvar). %>
-    <div id="store-map" class="store-map" role="region" aria-label="Mapa do mercado"
-         data-lat="<%= hasCoords ? s.latitude : "" %>" data-lng="<%= hasCoords ? s.longitude : "" %>"></div>
-    <small class="muted">
-      <%= hasCoords ? "Arraste o marcador" : "Clique no mapa" %> para ajustar a posição; depois, Salvar.
-      <% if (hasCoords) { %>
-        <a href="https://www.openstreetmap.org/?mlat=<%= s.latitude %>&mlon=<%= s.longitude %>#map=18/<%= s.latitude %>/<%= s.longitude %>" target="_blank" rel="noopener">Abrir no OpenStreetMap ↗</a>
-      <% } %>
-    </small>
-    <button type="submit">Salvar</button>
-  </article>
+  </details>
+  <button type="submit" class="store-save">Salvar</button>
 </form>
 
 <% if (canEnrich) { %>
   <form method="post" action="/stores/<%= s.cnpj %>/enrich">
-    <button type="submit" class="secondary outline">Completar campos vazios pelo CNPJ e endereço</button>
+    <button type="submit" class="secondary outline">Completar campos vazios pelo CNPJ</button>
     <small class="muted">Consulta a BrasilAPI (cadastro da Receita) e o OpenStreetMap. Só preenche o que está vazio.
       <% if (s.enriched_at) { %>Última consulta: <%= s.enriched_at.toLocaleDateString("pt-BR") %>.<% } %></small>
   </form>
@@ -79,13 +77,19 @@
 
 <h2>Notas deste mercado</h2>
 <% if (receipts.length === 0) { %><p class="muted">Nenhuma.</p><% } %>
-<ul class="store-receipts">
+<ul class="rows">
   <% for (const r of receipts) { %>
     <li>
-      <a href="/receipts/<%= r.id %>">Nota #<%= r.id %></a>
-      · <%= date(r.purchase_date) %>
-      · <%= r.total_cents === null ? "—" : formatCents(r.total_cents) %>
-      · <span class="muted"><%= STATUS[r.status] || r.status %>, de <%= r.owner %></span>
+      <a href="/receipts/<%= r.id %>" class="row-link">
+        <div class="row-head">
+          <span><%= date(r.purchase_date) %></span>
+          <strong><%= r.total_cents === null ? "—" : formatCents(r.total_cents) %></strong>
+        </div>
+        <div class="row-meta">
+          <span><%= STATUS[r.status] || r.status %>, de <%= r.owner %></span>
+          <span>nota #<%= r.id %></span>
+        </div>
+      </a>
     </li>
   <% } %>
 </ul>

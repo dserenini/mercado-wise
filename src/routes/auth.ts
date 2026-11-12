@@ -77,6 +77,8 @@ export const requireLogin: RequestHandler = (req, res, next) => {
   const user = currentUser(req.session);
   if (user) {
     res.locals.currentUser = user;
+    // aba ativa na navegação (partials/top.ejs)
+    res.locals.path = req.path;
     next();
     return;
   }

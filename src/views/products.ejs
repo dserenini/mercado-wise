@@ -4,10 +4,9 @@
   const per = (u) => (u === "kg" ? "/kg" : "");
 %>
 <h1>Produtos</h1>
-<p class="muted">Preço de cada produto nas notas confirmadas, suas e de todos. Escolha um para ver como o preço mudou.</p>
 
 <form method="get" action="/products" role="search">
-  <input type="search" name="q" value="<%= q %>" placeholder="Buscar produto, marca ou variante" aria-label="Buscar produto" autofocus>
+  <input type="search" name="q" value="<%= q %>" placeholder="Buscar produto, marca ou variante" aria-label="Buscar produto">
 </form>
 
 <% if (products.length === 0) { %>

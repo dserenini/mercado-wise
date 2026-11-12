@@ -8,16 +8,190 @@
   --mw-bad: #c62828;
 }
 
-header nav {
-  padding-block: 0.25rem;
-  /* No celular os itens não cabem numa linha: quebram em vez de sair da tela. */
-  flex-wrap: wrap;
+/* Estrutura: barra do topo compacta; abas fixas embaixo no celular (alcance do
+   polegar), no topo em telas largas. O conteúdo fica com o resto da tela. */
+:root {
+  --mw-topbar-h: 3.25rem;
+  --mw-tabbar-h: 4rem;
+  --mw-brand: #2e9d4a;
 }
-header nav ul {
-  flex-wrap: wrap;
+body {
+  padding-bottom: calc(var(--mw-tabbar-h) + env(safe-area-inset-bottom));
 }
-header nav .brand {
+main.container {
+  padding-top: 0.75rem;
+  /* espaço para o botão flutuante não cobrir o último item */
+  padding-bottom: 5rem;
+}
+h1 {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+h2 {
+  font-size: 1.2rem;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: var(--mw-topbar-h);
+  padding: 0 max(1rem, env(safe-area-inset-right)) 0
+    max(1rem, env(safe-area-inset-left));
+  background: var(--pico-background-color);
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+.topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  color: var(--pico-contrast);
   text-decoration: none;
+  margin-right: auto;
+}
+.logo {
+  flex: none;
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.tabs {
+  position: fixed;
+  z-index: 20;
+  inset: auto 0 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  height: calc(var(--mw-tabbar-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--pico-background-color);
+  border-top: 1px solid var(--pico-muted-border-color);
+}
+.tabs a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--pico-muted-color);
+  text-decoration: none;
+}
+.tabs a[aria-current="page"] {
+  color: var(--pico-primary);
+}
+.tabs svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Ação principal: botão flutuante acima das abas, longe da navegação. */
+.send-button {
+  position: fixed;
+  z-index: 21;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: calc(var(--mw-tabbar-h) + env(safe-area-inset-bottom) + 1rem);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.85rem 1.25rem;
+  border-radius: 2rem;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+}
+.send-button svg {
+  width: 1.3rem;
+  height: 1.3rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+.user-menu {
+  position: relative;
+  margin: 0;
+}
+.user-menu > summary {
+  list-style: none;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+}
+.user-menu > summary::-webkit-details-marker,
+.user-menu > summary::after {
+  display: none;
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--pico-secondary-background);
+  color: var(--pico-secondary-inverse);
+  font-weight: 700;
+}
+.user-menu .menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  min-width: 13rem;
+  padding: 0.75rem;
+  border-radius: var(--pico-border-radius);
+  background: var(--pico-card-background-color);
+  box-shadow: var(--pico-card-box-shadow);
+  border: 1px solid var(--pico-muted-border-color);
+}
+.user-menu .menu p {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+.user-menu .menu a {
+  display: block;
+  padding: 0.6rem 0;
+}
+.user-menu .menu form,
+.user-menu .menu button {
+  margin: 0;
+  width: 100%;
+}
+@media (min-width: 768px) {
+  body {
+    padding-bottom: 0;
+  }
+  .tabs {
+    position: static;
+    display: flex;
+    gap: 1.25rem;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  .tabs a {
+    flex-direction: row;
+    font-size: 0.95rem;
+    gap: 0.35rem;
+  }
+  .tabs svg {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+  .send-button {
+    position: static;
+    padding: 0.45rem 0.9rem;
+    box-shadow: none;
+  }
 }
 form.inline {
   margin: 0;
@@ -59,6 +233,18 @@ form.inline button {
   justify-content: space-between;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+/* Nome à esquerda (quebra linha se precisar), valor sempre à direita. */
+.row-head {
+  flex-wrap: nowrap;
+  align-items: baseline;
+}
+.row-head > :first-child {
+  min-width: 0;
+}
+.row-head > :last-child {
+  flex: none;
+  white-space: nowrap;
 }
 .row-meta {
   color: var(--pico-muted-color);
@@ -473,13 +659,6 @@ details.item > summary::after {
   font-size: 1.1rem;
   margin-bottom: 0.4rem;
 }
-details.more-fields {
-  margin: 0.25rem 0 0;
-  font-size: 0.85rem;
-}
-details.more-fields > summary {
-  color: var(--pico-muted-color);
-}
 details.item .item-done {
   width: 100%;
   margin: 0.4rem 0 0.2rem;
@@ -521,12 +700,14 @@ details.item {
   color: var(--pico-muted-color);
 }
 /* details.item na frente: precisa vencer a altura que o Pico define para campos. */
+/* 16 px: abaixo disso o Safari do iPhone dá zoom ao tocar no campo. 44 px de altura
+   para o dedo. */
 details.item .fields input,
 details.item .fields select {
   margin: 0.1rem 0 0;
-  height: 2rem;
-  padding-block: 0.2rem;
-  font-size: 0.85rem;
+  height: 2.75rem;
+  padding-block: 0.3rem;
+  font-size: 1rem;
   color: var(--pico-color);
 }
 details.item .fields select {
@@ -589,7 +770,9 @@ details.item .fields .suggested {
 
 .totals-bar {
   position: sticky;
-  bottom: 0;
+  /* acima das abas fixas do celular */
+  bottom: calc(var(--mw-tabbar-h) + env(safe-area-inset-bottom));
+  z-index: 10;
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
@@ -655,9 +838,13 @@ details.item .fields .suggested {
 /* Mercado: números calculados das notas */
 .store-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+}
+.store-stats small {
+  font-size: 0.75rem;
 }
 .store-stats div {
   display: flex;
@@ -669,7 +856,7 @@ details.item .fields .suggested {
 
 /* Mapa da página do mercado */
 .store-map {
-  height: 20rem;
+  height: min(20rem, 45vh);
   border-radius: var(--pico-border-radius);
   margin-block: 0.5rem 0.25rem;
   overflow: hidden;
@@ -781,4 +968,154 @@ details.item .fields .suggested {
   padding: 0.25rem 0.75rem;
   font-size: 0.85rem;
   margin: 0;
+}
+
+@media (min-width: 768px) {
+  .totals-bar {
+    bottom: 0;
+  }
+}
+
+/* Revisão: topo compacto */
+.page-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.page-title .back-link {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: -0.5rem 0 0 -0.6rem;
+  font-size: 1.4rem;
+  text-decoration: none;
+}
+.page-title h1 {
+  font-size: 1.2rem;
+  line-height: 1.3;
+  margin: 0;
+}
+.review-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.9rem;
+}
+.receipt-head {
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+}
+.head-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 0.75rem;
+}
+.head-grid .wide {
+  grid-column: 1 / -1;
+}
+/* Campos mais baixos (ainda ≥ 44 px de toque) e rótulos pequenos. */
+.receipt-head label,
+details.item .fields label {
+  font-size: 0.8rem;
+  color: var(--pico-muted-color);
+}
+.receipt-head input {
+  --pico-form-element-spacing-vertical: 0.55rem;
+  margin-bottom: 0.6rem;
+  font-size: 1rem;
+  color: var(--pico-color);
+}
+/* "Mais campos" e similares: alvo de toque inteiro, longe do botão Pronto. */
+details.more-fields {
+  margin: 0.5rem 0 0;
+}
+details.more-fields > summary {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  border: 1px dashed var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  color: var(--pico-muted-color);
+  font-size: 0.9rem;
+}
+details.more-fields[open] > summary {
+  margin-bottom: 0.5rem;
+}
+details.item .item-done {
+  margin-top: 1rem;
+  min-height: 2.75rem;
+}
+.items-toggle button {
+  min-height: 2.5rem;
+}
+details.item > summary {
+  min-height: 2.75rem;
+}
+
+/* Barra de soma: uma linha, rótulo pequeno em cima do valor. */
+.totals-bar {
+  flex-wrap: nowrap;
+  padding: 0.45rem 0.75rem;
+  margin: 0.75rem 0;
+}
+.totals-bar > span {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.72rem;
+  color: var(--pico-muted-color);
+}
+.totals-bar > span[hidden] {
+  display: none;
+}
+.totals-bar strong {
+  font-size: 0.95rem;
+  color: var(--pico-color);
+  white-space: nowrap;
+}
+
+/* Listas compactas (no lugar de tabelas largas no celular) */
+ul.rows {
+  padding: 0;
+  margin-bottom: 1.5rem;
+}
+ul.rows li {
+  list-style: none;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+.row-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.page-sub {
+  margin: 0 0 0.75rem;
+}
+.store-save {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+details.filters > summary {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+}
+details.filters[open] > summary {
+  margin-bottom: 0.75rem;
+}
+.receipt-row article {
+  margin-bottom: 0.5rem;
+  padding: 0.75rem 0.9rem;
+}
+.user-menu[open] > summary {
+  margin-bottom: 0;
 }

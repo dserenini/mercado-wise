@@ -6,8 +6,7 @@
     .filter(Boolean).join(" · ");
 %>
 <h1>Mercados</h1>
-<p class="muted">Cada loja aparece aqui sozinha quando chega a primeira nota dela (pelo CNPJ).
-  Os números contam notas em rascunho e confirmadas, de todos os usuários.</p>
+<p class="muted"><small>Notas de todos os usuários, rascunhos e confirmadas.</small></p>
 
 <% if (stores.length === 0) { %>
   <p>Nenhum mercado ainda. Eles aparecem quando você <a href="/receipts/new">envia uma nota</a>.</p>
