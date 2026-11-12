@@ -45,6 +45,25 @@
 
   <div class="fields">
     <input type="hidden" name="<%= name("copied") %>" value="" data-copied>
+    <label class="d-6 m-4">Produto
+      <input name="<%= name("product") %>" value="<%= v("product") %>" required data-fill="product" class="<%= sug %>">
+    </label>
+    <label class="d-6 m-4">Marca
+      <input name="<%= name("brand") %>" value="<%= v("brand") %>" data-fill="brand" class="<%= it && it.brand_hint ? "suggested" : sug %>">
+    </label>
+    <label class="d-2 m-1">Qtd
+      <input name="<%= name("quantity") %>" value="<%= it ? decimalToInput(it.quantity) : "" %>" inputmode="decimal" data-qty>
+    </label>
+    <label class="d-5 m-1">Preço un.
+      <input name="<%= name("unit_price") %>" value="<%= it ? centsToInput(it.unit_price_cents) : "" %>" inputmode="decimal" data-price>
+    </label>
+    <label class="d-5 m-2">Total
+      <input name="<%= name("total_price") %>" value="<%= it ? centsToInput(it.total_price_cents) : "" %>" inputmode="decimal" data-line-total>
+    </label>
+  </div>
+  <details class="more-fields">
+    <summary>Mais campos</summary>
+    <div class="fields">
     <label class="d-6 m-4">Na nota
       <input name="<%= name("raw_description") %>" value="<%= v("raw_description") %>" list="item-suggestions" autocomplete="off" data-desc class="<%= sug %>">
     </label>
@@ -54,33 +73,15 @@
     <label class="d-3 m-2">Código interno
       <input name="<%= name("store_code") %>" value="<%= v("store_code") %>" data-code>
     </label>
-
-    <label class="d-2 m-1">Qtd
-      <input name="<%= name("quantity") %>" value="<%= it ? decimalToInput(it.quantity) : "" %>" inputmode="decimal" data-qty>
-    </label>
     <label class="d-2 m-1">Un
       <input name="<%= name("unit") %>" value="<%= v("unit") %>" data-unit>
     </label>
-    <label class="d-3 m-1">Preço un.
-      <input name="<%= name("unit_price") %>" value="<%= it ? centsToInput(it.unit_price_cents) : "" %>" inputmode="decimal" data-price>
-    </label>
-    <label class="d-3 m-1">Total
-      <input name="<%= name("total_price") %>" value="<%= it ? centsToInput(it.total_price_cents) : "" %>" inputmode="decimal" data-line-total>
-    </label>
-    <label class="d-2 m-4">Desconto
+    <label class="d-2 m-1">Desconto
       <input name="<%= name("discount") %>" value="<%= it ? centsToInput(it.discount_cents) : "" %>" inputmode="decimal" data-discount>
     </label>
-
-    <label class="d-4 m-4">Produto
-      <input name="<%= name("product") %>" value="<%= v("product") %>" required data-fill="product" class="<%= sug %>">
-    </label>
-    <label class="d-3 m-2">Marca
-      <input name="<%= name("brand") %>" value="<%= v("brand") %>" data-fill="brand" class="<%= it && it.brand_hint ? "suggested" : sug %>">
-    </label>
-    <label class="d-5 m-2">Variante
+    <label class="d-8 m-2">Variante
       <input name="<%= name("variant") %>" value="<%= v("variant") %>" data-fill="variant" class="<%= sug %>">
     </label>
-
     <label class="d-4 m-2">Categoria
       <select name="<%= name("category") %>" required data-fill="category" class="<%= sug %>">
         <option value="">—</option>
@@ -100,8 +101,10 @@
         <% } %>
       </select>
     </label>
-    <div class="d-4 m-4 field-actions">
-      <button type="button" class="secondary outline danger" data-remove>Remover item</button>
+      <div class="d-4 m-4 field-actions">
+        <button type="button" class="secondary outline danger" data-remove>Remover item</button>
+      </div>
     </div>
-  </div>
+  </details>
+  <button type="button" class="item-done" data-done>Pronto</button>
 </details>
